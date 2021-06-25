@@ -28,7 +28,7 @@ public class Bench
         HttpCharacters_BitArray.Initialize();
     }
 
-    [Benchmark(Baseline = true)]
+    //[Benchmark(Baseline = true)]
     public int Default() => HttpCharacters.IndexOfInvalidHostChar(this.Host);
 
     //[Benchmark]

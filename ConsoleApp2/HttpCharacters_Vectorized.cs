@@ -167,7 +167,7 @@ internal static unsafe class HttpCharacters_Vectorized
     {
         fixed (char* ptr = s)
         {
-            return Ssse3.IsSupported && s.Length >= 8
+            return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
                 ? IndexOfInvalidCharVectorized(ptr, s.Length, s_bitMaskLookupHost)
                 : IndexOfInvalidCharScalar(ptr, s.Length, s_host);
         }
@@ -178,7 +178,7 @@ internal static unsafe class HttpCharacters_Vectorized
     {
         fixed (char* ptr = s)
         {
-            return Ssse3.IsSupported && s.Length >= 8
+            return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
                 ? IndexOfInvalidCharVectorized(ptr, s.Length, s_bitMaskLookupToken)
                 : IndexOfInvalidCharScalar(ptr, s.Length, s_token);
         }
@@ -198,7 +198,7 @@ internal static unsafe class HttpCharacters_Vectorized
     {
         fixed (char* ptr = s)
         {
-            return Ssse3.IsSupported && s.Length >= 8
+            return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
                 ? IndexOfInvalidCharVectorized(ptr, s.Length, s_bitMaskLookupFieldValue)
                 : IndexOfInvalidCharScalar(ptr, s.Length, s_fieldValue);
         }
@@ -246,7 +246,7 @@ internal static unsafe class HttpCharacters_Vectorized
         nint idx = 0;
         int mask;
 
-        while (length - 16 >= idx)
+        while (length - 2 * Vector128<short>.Count >= idx)
         {
             Vector128<short> source0 = Sse2.LoadVector128((short*)(ptr + idx));
             Vector128<short> source1 = Sse2.LoadVector128((short*)(ptr + idx + 8));
@@ -258,11 +258,11 @@ internal static unsafe class HttpCharacters_Vectorized
                 goto Found;
             }
 
-            idx += 16;
+            idx += 2 * Vector128<short>.Count;
         }
 
         // Here we know that 8 to 15 chars are remaining. Process the first 8 chars.
-        if (length - 8 >= idx)
+        if (length - Vector128<short>.Count >= idx)
         {
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
@@ -273,7 +273,7 @@ internal static unsafe class HttpCharacters_Vectorized
                 goto Found;
             }
 
-            idx += 8;
+            idx += Vector128<short>.Count;
         }
 
         // Here we know that < 8 chars are remaining. We shift the space around to process
@@ -281,7 +281,7 @@ internal static unsafe class HttpCharacters_Vectorized
         nint remaining = length - idx;
         if (remaining > 0)
         {
-            remaining -= 8;
+            remaining -= Vector128<short>.Count;
 
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx + remaining));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
@@ -294,11 +294,14 @@ internal static unsafe class HttpCharacters_Vectorized
             }
         }
 
-        return -1;
+        goto NotFound;
 
     Found:
         idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
         return (int)idx;
+
+    NotFound:
+        return -1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
