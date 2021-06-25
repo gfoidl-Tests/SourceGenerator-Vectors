@@ -8,11 +8,11 @@ using System.Runtime.Intrinsics.X86;
 internal static class HttpCharacters_Vectorized
 {
     private const int TableSize = 128;
-    private static readonly bool[] s_alphaNumeric;
-    private static readonly bool[] s_authority;
-    private static readonly bool[] s_token;
-    private static readonly bool[] s_host;
-    private static readonly bool[] s_fieldValue;
+    private static readonly BitMask s_alphaNumeric;
+    private static readonly BitMask s_authority;
+    private static readonly BitMask s_token;
+    private static readonly BitMask s_host;
+    private static readonly BitMask s_fieldValue;
 
     private static readonly Vector128<sbyte> s_bitMaskLookupAlphaNumeric;
     private static readonly Vector128<sbyte> s_bitMaskLookupAuthority;
@@ -33,10 +33,17 @@ internal static class HttpCharacters_Vectorized
     internal static void Init()
     {
         _ = s_alphaNumeric;
+        _ = s_authority;
+        _ = s_token;
         _ = s_host;
+        _ = s_fieldValue;
+
 
         _ = s_bitMaskLookupAlphaNumeric;
+        _ = s_bitMaskLookupAuthority;
+        _ = s_bitMaskLookupToken;
         _ = s_bitMaskLookupHost;
+        _ = s_bitMaskLookupFieldValue;
     }
 
     private unsafe static void SetBitInMask(sbyte* mask, int c)
@@ -49,11 +56,11 @@ internal static class HttpCharacters_Vectorized
         mask[lowNibble] &= (sbyte)(~(1 << highNibble));
     }
 
-    private static unsafe (bool[], Vector128<sbyte>) InitializeAlphaNumeric()
+    private static unsafe (BitMask, Vector128<sbyte>) InitializeAlphaNumeric()
     {
         // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
 
-        bool[] alphaNumeric = new bool[TableSize];
+        BitMask alphaNumeric = BitMask.Create();
         Vector128<sbyte> vector = Vector128.Create((sbyte)-1);
         sbyte* mask = (sbyte*)&vector;
 
@@ -65,7 +72,7 @@ internal static class HttpCharacters_Vectorized
         {
             for (char c = first; c <= last; ++c)
             {
-                alphaNumeric[c] = true;
+                alphaNumeric.SetValid(c);
                 SetBitInMask(mask, c);
             }
         }
@@ -73,7 +80,7 @@ internal static class HttpCharacters_Vectorized
         return (alphaNumeric, vector);
     }
 
-    private static unsafe (bool[], Vector128<sbyte>) InitializeAuthority()
+    private static unsafe (BitMask, Vector128<sbyte>) InitializeAuthority()
     {
         // Authority https://tools.ietf.org/html/rfc3986#section-3.2
         // Examples:
@@ -85,68 +92,65 @@ internal static class HttpCharacters_Vectorized
         // user@host.com
         // user:password@host.com
 
-        bool[] authority = new bool[TableSize];
-        Array.Copy(s_alphaNumeric, authority, TableSize);
+        BitMask authority = BitMask.Create(s_alphaNumeric);
         Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
         sbyte* mask = (sbyte*)&vector;
 
         foreach (char c in ":.[]@")
         {
-            authority[c] = true;
+            authority.SetValid(c);
             SetBitInMask(mask, c);
         }
 
         return (authority, vector);
     }
 
-    private static unsafe (bool[], Vector128<sbyte>) InitializeToken()
+    private static unsafe (BitMask, Vector128<sbyte>) InitializeToken()
     {
         // tchar https://tools.ietf.org/html/rfc7230#appendix-B
 
-        bool[] token = new bool[TableSize];
-        Array.Copy(s_alphaNumeric, token, TableSize);
+        BitMask token = BitMask.Create(s_alphaNumeric);
         Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
         sbyte* mask = (sbyte*)&vector;
 
         foreach (char c in "!#$%&\'*+-.^_`|~")
         {
-            token[c] = true;
+            token.SetValid(c);
             SetBitInMask(mask, c);
         }
 
         return (token, vector);
     }
 
-    private static unsafe (bool[], Vector128<sbyte>) InitializeHost()
+    private static unsafe (BitMask, Vector128<sbyte>) InitializeHost()
     {
         // Matches Http.Sys
         // Matches RFC 3986 except "*" / "+" / "," / ";" / "=" and "%" HEXDIG HEXDIG which are not allowed by Http.Sys
 
-        bool[] host = new bool[TableSize];
-        Array.Copy(s_alphaNumeric, host, TableSize);
+        BitMask host = BitMask.Create(s_alphaNumeric);
         Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
         sbyte* mask = (sbyte*)&vector;
 
         foreach (char c in "!$&\'()-._~")
         {
-            host[c] = true;
+            host.SetValid(c);
             SetBitInMask(mask, c);
         }
 
         return (host, vector);
     }
 
-    private static unsafe (bool[], Vector128<sbyte>) InitializeFieldValue()
+    private static unsafe (BitMask, Vector128<sbyte>) InitializeFieldValue()
     {
         // field-value https://tools.ietf.org/html/rfc7230#section-3.2
 
-        bool[] fieldValue = new bool[TableSize];
+        BitMask fieldValue = BitMask.Create();
         Vector128<sbyte> vector = Vector128.Create((sbyte)-1);
         sbyte* mask = (sbyte*)&vector;
 
-        for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
+        for (char c = (char)0x20; c <= (char)0x7e; c++) // VCHAR and SP
         {
-            fieldValue[c] = true;
+            fieldValue.SetValid(c);
             SetBitInMask(mask, c);
         }
 
@@ -204,14 +208,14 @@ internal static class HttpCharacters_Vectorized
 
             if (idx < n)
             {
-                bool[] host = s_host;
+                BitMask host = s_host;
 
                 do
                 {
                     Debug.Assert((ptr + idx) <= (ptr + s.Length));
 
                     char c = ptr[idx];
-                    if (c >= (uint)host.Length || !host[c])
+                    if (c >= TableSize || !host.IsValid(c))
                     {
                         return (int)idx;
                     }
@@ -220,6 +224,33 @@ internal static class HttpCharacters_Vectorized
         }
 
         return -1;
+    }
+
+    private unsafe struct BitMask
+    {
+        private fixed bool _data[TableSize];
+
+        public static BitMask Create() => new BitMask();
+
+        public static BitMask Create(BitMask other)
+        {
+            BitMask bitmask = new();
+            Buffer.MemoryCopy(other._data, bitmask._data, TableSize, TableSize);
+
+            return bitmask;
+        }
+
+        public void SetValid(char c)
+        {
+            Debug.Assert(c < 128);
+            _data[c] = true;
+        }
+
+        public bool IsValid(char c)
+        {
+            Debug.Assert(c < 128);
+            return _data[(uint)c];
+        }
     }
 
     internal static class BitHelper
