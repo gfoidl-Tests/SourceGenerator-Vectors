@@ -18,7 +18,9 @@ BenchmarkRunner.Run<Bench>();
 [DisassemblyDiagnoser]
 public class Bench
 {
-    private string _host = "0123456789#";
+    //[Params("abc", "0123456789abcd❤efghij", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa❤aaaaaa")]
+    public string Host { get; set; } = "0123456789abcdefghijk❤";
+    //public string Host { get; set; } = "012";
 
     public Bench()
     {
@@ -26,12 +28,12 @@ public class Bench
         HttpCharacters_BitArray.Initialize();
     }
 
-    //[Benchmark(Baseline = true)]
-    public int Default() => HttpCharacters.IndexOfInvalidHostChar(_host);
+    [Benchmark(Baseline = true)]
+    public int Default() => HttpCharacters.IndexOfInvalidHostChar(this.Host);
 
     //[Benchmark]
-    public int BitArrayBased() => HttpCharacters_BitArray.IndexOfInvalidHostChar(_host);
+    public int BitArrayBased() => HttpCharacters_BitArray.IndexOfInvalidHostChar(this.Host);
 
     [Benchmark]
-    public int Vectorized() => HttpCharacters_Vectorized.IndexOfInvalidHostChar(_host);
+    public int Vectorized() => HttpCharacters_Vectorized.IndexOfInvalidHostChar(this.Host);
 }
