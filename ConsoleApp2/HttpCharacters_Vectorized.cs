@@ -54,7 +54,7 @@ internal static unsafe class HttpCharacters_Vectorized
         // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
 
         bool[] alphaNumeric = new bool[TableSize];
-        Vector128<sbyte> vector = Vector128.Create((sbyte)-1);
+        Vector128<sbyte> vector = Vector128<sbyte>.AllBitsSet;
         sbyte* mask = (sbyte*)&vector;
 
         SetMask('0', '9');
@@ -141,7 +141,7 @@ internal static unsafe class HttpCharacters_Vectorized
         // field-value https://tools.ietf.org/html/rfc7230#section-3.2
 
         bool[] fieldValue = new bool[TableSize];
-        Vector128<sbyte> vector = Vector128.Create((sbyte)-1);
+        Vector128<sbyte> vector = Vector128<sbyte>.AllBitsSet;
         sbyte* mask = (sbyte*)&vector;
 
         for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
@@ -158,7 +158,11 @@ internal static unsafe class HttpCharacters_Vectorized
     {
         fixed (byte* ptr = s)
         {
-            return IndexOfInvalidChar(ptr, s.Length, s_authority, s_bitMaskLookupAuthority) >= 0;
+            int index = Ssse3.IsSupported && s.Length >= Vector128<byte>.Count
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupAuthority)
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_authority);
+
+            return index >= 0;
         }
     }
 
@@ -168,8 +172,8 @@ internal static unsafe class HttpCharacters_Vectorized
         fixed (char* ptr = s)
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
-                ? IndexOfInvalidCharVectorized(ptr, s.Length, s_bitMaskLookupHost)
-                : IndexOfInvalidCharScalar(ptr, s.Length, s_host);
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupHost)
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_host);
         }
     }
 
@@ -179,8 +183,8 @@ internal static unsafe class HttpCharacters_Vectorized
         fixed (char* ptr = s)
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
-                ? IndexOfInvalidCharVectorized(ptr, s.Length, s_bitMaskLookupToken)
-                : IndexOfInvalidCharScalar(ptr, s.Length, s_token);
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupToken)
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_token);
         }
     }
 
@@ -189,7 +193,9 @@ internal static unsafe class HttpCharacters_Vectorized
     {
         fixed (byte* ptr = span)
         {
-            return IndexOfInvalidChar(ptr, span.Length, s_token, s_bitMaskLookupToken);
+            return Ssse3.IsSupported && span.Length >= Vector128<byte>.Count
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)span.Length, s_bitMaskLookupToken)
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)span.Length, s_token);
         }
     }
 
@@ -199,8 +205,8 @@ internal static unsafe class HttpCharacters_Vectorized
         fixed (char* ptr = s)
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
-                ? IndexOfInvalidCharVectorized(ptr, s.Length, s_bitMaskLookupFieldValue)
-                : IndexOfInvalidCharScalar(ptr, s.Length, s_fieldValue);
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupFieldValue)
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_fieldValue);
         }
     }
 
@@ -221,10 +227,26 @@ internal static unsafe class HttpCharacters_Vectorized
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int IndexOfInvalidCharScalar(byte* ptr, nint length, bool[] lookup)
+    {
+        for (nint i = 0; i < length; ++i)
+        {
+            byte b = ptr[i];
+
+            if (b >= (uint)lookup.Length || !lookup[b])
+            {
+                return (int)i;
+            }
+        }
+
+        return -1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharVectorized(char* ptr, nint length, Vector128<sbyte> bitMaskLookup)
     {
         Debug.Assert(Ssse3.IsSupported);
-        Debug.Assert(length >= 8);
+        Debug.Assert(length >= Vector128<short>.Count);
 
         // To check if a bit in a bitmask from the Bitmask is set, in a sequential code
         // we would do ((1 << bitIndex) & bitmask) != 0
@@ -305,51 +327,68 @@ internal static unsafe class HttpCharacters_Vectorized
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOfInvalidChar(byte* ptr, nint length, bool[] lookup, Vector128<sbyte> bitMaskLookup)
+    private static int IndexOfInvalidCharVectorized(byte* ptr, nint length, Vector128<sbyte> bitMaskLookup)
     {
+        Debug.Assert(Ssse3.IsSupported);
+        Debug.Assert(length >= Vector128<byte>.Count);
+
+        // To check if a bit in a bitmask from the Bitmask is set, in a sequential code
+        // we would do ((1 << bitIndex) & bitmask) != 0
+        // As there is no hardware instrinic for such a shift, we use a lookup that
+        // stores the shifted bitpositions.
+        // So (1 << bitIndex) becomes BitPosLook[bitIndex], which is simd-friendly.
+        //
+        // A bitmask from the Bitmask (above) is created only for values 0..7 (one byte),
+        // so to avoid a explicit check for values outside 0..7, i.e.
+        // high nibbles 8..F, we use a bitpos that always results in escaping.
+        Vector128<sbyte> bitPosLookup = Vector128.Create(
+            0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,     // high-nibble 0..7
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF      // high-nibble 8..F
+        ).AsSByte();
+
+        Vector128<sbyte> nibbleMaskSByte = Vector128.Create((sbyte)0xF);
+        Vector128<sbyte> nullMaskSByte = Vector128<sbyte>.Zero;
+
         nint idx = 0;
+        int mask;
 
-        if (Ssse3.IsSupported && length - 8 >= idx)
+        while (length - Vector128<byte>.Count >= idx)
         {
-            Vector128<sbyte> bitPosLookup = Vector128.Create(
-                0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,     // high-nibble 0..7
-                0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF      // high-nibble 8..F
-            ).AsSByte();
+            Vector128<sbyte> values = Sse2.LoadVector128((sbyte*)(ptr + idx));
 
-            Vector128<sbyte> nibbleMaskSByte = Vector128.Create((sbyte)0xF);
-            Vector128<sbyte> nullMaskSByte = Vector128<sbyte>.Zero;
-
-            do
+            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            if (mask != 0)
             {
-                Debug.Assert(idx <= (length - 8));
+                goto Found;
+            }
 
-                Vector128<sbyte> values = Sse2.LoadVector128((sbyte*)(ptr + idx));
-
-                int mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
-                if (mask != 0)
-                {
-                    idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
-                    return (int)idx;
-                }
-
-                idx += 8;
-            } while (length - 8 >= idx);
+            idx += Vector128<byte>.Count;
         }
 
-        if (idx < length)
+        // Here we know that < 16 bytes are remaining. We shift the space around to process
+        // another full vector.
+        nint remaining = length - idx;
+        if (remaining > 0)
         {
-            do
-            {
-                Debug.Assert((ptr + idx) <= (ptr + length));
+            remaining -= Vector128<byte>.Count;
 
-                byte c = ptr[idx];
-                if (c >= (uint)lookup.Length || !lookup[c])
-                {
-                    return (int)idx;
-                }
-            } while (++idx < length);
+            Vector128<sbyte> values = Sse2.LoadVector128((sbyte*)ptr + idx + remaining);
+
+            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            if (mask != 0)
+            {
+                idx += remaining;
+                goto Found;
+            }
         }
 
+        goto NotFound;
+
+    Found:
+        idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
+        return (int)idx;
+
+    NotFound:
         return -1;
     }
 
