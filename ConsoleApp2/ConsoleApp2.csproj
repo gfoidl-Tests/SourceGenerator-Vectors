@@ -11,4 +11,12 @@
         <PackageReference Include="BenchmarkDotNet" Version="0.13.0" />
     </ItemGroup>
 
+    <ItemGroup>
+        <ProjectReference Include="..\ConsoleApp2.Generator\ConsoleApp2.Generator.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
+    </ItemGroup>
+
+    <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+    </PropertyGroup>
+
 </Project>

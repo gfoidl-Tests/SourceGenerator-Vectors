@@ -2,17 +2,19 @@
 using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
 
-internal static unsafe class HttpCharacters_Vectorized
+internal static unsafe partial class HttpCharacters_Vectorized
 {
     private const int TableSize = 128;
-    private static readonly bool[] s_alphaNumeric;
-    private static readonly bool[] s_authority;
-    private static readonly bool[] s_token;
-    private static readonly bool[] s_host;
-    private static readonly bool[] s_fieldValue;
+
+    private static partial ReadOnlySpan<bool> LookupAlphaNumeric();
+    private static partial ReadOnlySpan<bool> LookupAuthority();
+    private static partial ReadOnlySpan<bool> LookupToken();
+    private static partial ReadOnlySpan<bool> LookupHost();
+    private static partial ReadOnlySpan<bool> LookupFieldValue();
 
     private static readonly Vector128<sbyte> s_bitMaskLookupAlphaNumeric;
     private static readonly Vector128<sbyte> s_bitMaskLookupAuthority;
@@ -22,19 +24,16 @@ internal static unsafe class HttpCharacters_Vectorized
 
     static HttpCharacters_Vectorized()
     {
-        (s_alphaNumeric, s_bitMaskLookupAlphaNumeric) = InitializeAlphaNumeric();
-        (s_authority, s_bitMaskLookupAuthority) = InitializeAuthority();
-        (s_token, s_bitMaskLookupToken) = InitializeToken();
-        (s_host, s_bitMaskLookupHost) = InitializeHost();
-        (s_fieldValue, s_bitMaskLookupFieldValue) = InitializeFieldValue();
+        s_bitMaskLookupAlphaNumeric = InitializeAlphaNumeric();
+        s_bitMaskLookupAuthority = InitializeAuthority();
+        s_bitMaskLookupToken = InitializeToken();
+        s_bitMaskLookupHost = InitializeHost();
+        s_bitMaskLookupFieldValue = InitializeFieldValue();
     }
 
     [ModuleInitializer]
     internal static void Init()
     {
-        _ = s_alphaNumeric;
-        _ = s_host;
-
         _ = s_bitMaskLookupAlphaNumeric;
         _ = s_bitMaskLookupHost;
     }
@@ -49,11 +48,10 @@ internal static unsafe class HttpCharacters_Vectorized
         mask[lowNibble] &= (sbyte)~(1 << highNibble);
     }
 
-    private static (bool[], Vector128<sbyte>) InitializeAlphaNumeric()
+    private static Vector128<sbyte> InitializeAlphaNumeric()
     {
         // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
 
-        bool[] alphaNumeric = new bool[TableSize];
         Vector128<sbyte> vector = Vector128<sbyte>.AllBitsSet;
         sbyte* mask = (sbyte*)&vector;
 
@@ -65,15 +63,14 @@ internal static unsafe class HttpCharacters_Vectorized
         {
             for (char c = first; c <= last; ++c)
             {
-                alphaNumeric[c] = true;
                 SetBitInMask(mask, c);
             }
         }
 
-        return (alphaNumeric, vector);
+        return vector;
     }
 
-    private static (bool[], Vector128<sbyte>) InitializeAuthority()
+    private static Vector128<sbyte> InitializeAuthority()
     {
         // Authority https://tools.ietf.org/html/rfc3986#section-3.2
         // Examples:
@@ -85,72 +82,61 @@ internal static unsafe class HttpCharacters_Vectorized
         // user@host.com
         // user:password@host.com
 
-        bool[] authority = new bool[TableSize];
-        Array.Copy(s_alphaNumeric, authority, TableSize);
         Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
         sbyte* mask = (sbyte*)&vector;
 
         foreach (char c in ":.[]@")
         {
-            authority[c] = true;
             SetBitInMask(mask, c);
         }
 
-        return (authority, vector);
+        return vector;
     }
 
-    private static (bool[], Vector128<sbyte>) InitializeToken()
+    private static Vector128<sbyte> InitializeToken()
     {
         // tchar https://tools.ietf.org/html/rfc7230#appendix-B
 
-        bool[] token = new bool[TableSize];
-        Array.Copy(s_alphaNumeric, token, TableSize);
         Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
         sbyte* mask = (sbyte*)&vector;
 
         foreach (char c in "!#$%&\'*+-.^_`|~")
         {
-            token[c] = true;
             SetBitInMask(mask, c);
         }
 
-        return (token, vector);
+        return vector;
     }
 
-    private static (bool[], Vector128<sbyte>) InitializeHost()
+    private static Vector128<sbyte> InitializeHost()
     {
         // Matches Http.Sys
         // Matches RFC 3986 except "*" / "+" / "," / ";" / "=" and "%" HEXDIG HEXDIG which are not allowed by Http.Sys
 
-        bool[] host = new bool[TableSize];
-        Array.Copy(s_alphaNumeric, host, TableSize);
         Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
         sbyte* mask = (sbyte*)&vector;
 
         foreach (char c in "!$&\'()-._~")
         {
-            host[c] = true;
             SetBitInMask(mask, c);
         }
 
-        return (host, vector);
+        return vector;
     }
 
-    private static (bool[], Vector128<sbyte>) InitializeFieldValue()
+    private static Vector128<sbyte> InitializeFieldValue()
     {
         // field-value https://tools.ietf.org/html/rfc7230#section-3.2
 
-        bool[] fieldValue = new bool[TableSize];
         Vector128<sbyte> vector = Vector128<sbyte>.AllBitsSet;
         sbyte* mask = (sbyte*)&vector;
 
         for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
         {
-            fieldValue[c] = true;
             SetBitInMask(mask, c);
         }
 
-        return (fieldValue, vector);
+        return vector;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -160,7 +146,7 @@ internal static unsafe class HttpCharacters_Vectorized
         {
             int index = Ssse3.IsSupported && s.Length >= Vector128<byte>.Count
                 ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupAuthority)
-                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_authority);
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupAuthority());
 
             return index >= 0;
         }
@@ -171,9 +157,9 @@ internal static unsafe class HttpCharacters_Vectorized
     {
         fixed (char* ptr = s)
         {
-            return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
+            return false && Ssse3.IsSupported && s.Length >= Vector128<short>.Count
                 ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupHost)
-                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_host);
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupHost());
         }
     }
 
@@ -184,7 +170,7 @@ internal static unsafe class HttpCharacters_Vectorized
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
                 ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupToken)
-                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_token);
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupToken());
         }
     }
 
@@ -195,7 +181,7 @@ internal static unsafe class HttpCharacters_Vectorized
         {
             return Ssse3.IsSupported && span.Length >= Vector128<byte>.Count
                 ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)span.Length, s_bitMaskLookupToken)
-                : IndexOfInvalidCharScalar(ptr, (nint)(uint)span.Length, s_token);
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)span.Length, LookupToken());
         }
     }
 
@@ -206,18 +192,20 @@ internal static unsafe class HttpCharacters_Vectorized
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
                 ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupFieldValue)
-                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, s_fieldValue);
+                : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupFieldValue());
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOfInvalidCharScalar(char* ptr, nint length, bool[] lookup)
+    private static int IndexOfInvalidCharScalar(char* ptr, nint length, ReadOnlySpan<bool> lookup)
     {
+        ref bool lookupRef = ref MemoryMarshal.GetReference(lookup);
+
         for (nint i = 0; i < length; ++i)
         {
             char c = ptr[i];
 
-            if (c >= (uint)lookup.Length || !lookup[c])
+            if (c >= (uint)lookup.Length || !Unsafe.Add(ref lookupRef, (uint)c))
             {
                 return (int)i;
             }
@@ -227,7 +215,7 @@ internal static unsafe class HttpCharacters_Vectorized
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOfInvalidCharScalar(byte* ptr, nint length, bool[] lookup)
+    private static int IndexOfInvalidCharScalar(byte* ptr, nint length, ReadOnlySpan<bool> lookup)
     {
         for (nint i = 0; i < length; ++i)
         {

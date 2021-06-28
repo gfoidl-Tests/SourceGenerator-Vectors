@@ -7,17 +7,17 @@ using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Running;
 #endif
 
-BenchByte bench = new();
-bench.GlobalSetup();
-Console.WriteLine(bench.Token.Length);
-Console.WriteLine(bench.TokenBytes.Length);
-Console.WriteLine();
+Bench bench = new();
+//bench.GlobalSetup();
+//Console.WriteLine(bench.Token.Length);
+//Console.WriteLine(bench.TokenBytes.Length);
+//Console.WriteLine();
 
 Console.WriteLine(bench.Default());
 Console.WriteLine(bench.Vectorized());
 
 #if !DEBUG
-BenchmarkRunner.Run<BenchByte>();
+BenchmarkRunner.Run<Bench>();
 #endif
 
 [ShortRunJob]
