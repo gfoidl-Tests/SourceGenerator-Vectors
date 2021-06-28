@@ -229,7 +229,7 @@ internal static partial class HttpCharacters_Vectorized
         private void EmitConstant(StringBuilder builder, string name, bool[] lookup)
         {
             builder.Append($@"
-        public static ReadOnlySpan<bool> {name} => new bool[] {{ /* This is dummy to workaround a JIT limitation */ false, ");
+        public static ReadOnlySpan<bool> {name} => new bool[] {{ /* The first value is a dummy to workaround a JIT limitation */ false, ");
 
             for (int i = 0; i < lookup.Length; ++i)
             {
@@ -257,7 +257,7 @@ internal static partial class HttpCharacters_Vectorized
 
             for (int i = 0; i < mask.Length; ++i)
             {
-                builder.Append(mask[i]);
+                builder.Append("0x").AppendFormat("{0:X2}", mask[i]);
 
                 if (i < mask.Length - 1)
                 {
@@ -265,7 +265,7 @@ internal static partial class HttpCharacters_Vectorized
                 }
             }
 
-            builder.Append(");");
+            builder.Append(").AsSByte();");
         }
     }
 }

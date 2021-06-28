@@ -8,8 +8,6 @@ using System.Runtime.Intrinsics.X86;
 
 internal static unsafe partial class HttpCharacters_Vectorized
 {
-    private const int TableSize = 128;
-
     private static partial ReadOnlySpan<bool> LookupAlphaNumeric();
     private static partial ReadOnlySpan<bool> LookupAuthority();
     private static partial ReadOnlySpan<bool> LookupToken();
@@ -82,13 +80,14 @@ internal static unsafe partial class HttpCharacters_Vectorized
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharScalar(char* ptr, nint length, ReadOnlySpan<bool> lookup)
     {
+        // This is to workaround  https://github.com/dotnet/runtime/issues/12241
         ref bool lookupRef = ref MemoryMarshal.GetReference(lookup);
 
         for (nint i = 0; i < length; ++i)
         {
             char c = ptr[i];
 
-            if (c >= (uint)lookup.Length || !Unsafe.Add(ref lookupRef, (uint)c))
+            if (c >= lookup.Length || !Unsafe.Add(ref lookupRef, (uint)c))
             {
                 return (int)i;
             }
@@ -100,11 +99,14 @@ internal static unsafe partial class HttpCharacters_Vectorized
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharScalar(byte* ptr, nint length, ReadOnlySpan<bool> lookup)
     {
+        // This is to workaround  https://github.com/dotnet/runtime/issues/12241
+        ref bool lookupRef = ref MemoryMarshal.GetReference(lookup);
+
         for (nint i = 0; i < length; ++i)
         {
             byte b = ptr[i];
 
-            if (b >= (uint)lookup.Length || !lookup[b])
+            if (b >= lookup.Length || !Unsafe.Add(ref lookupRef, (uint)b))
             {
                 return (int)i;
             }
@@ -125,7 +127,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         // stores the shifted bitpositions.
         // So (1 << bitIndex) becomes BitPosLook[bitIndex], which is simd-friendly.
         //
-        // A bitmask from the Bitmask (above) is created only for values 0..7 (one byte),
+        // A bitmask from the bitMaskLookup is created only for values 0..7 (one byte),
         // so to avoid a explicit check for values outside 0..7, i.e.
         // high nibbles 8..F, we use a bitpos that always results in escaping.
         Vector128<sbyte> bitPosLookup = Vector128.Create(
@@ -291,7 +293,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
             // To check if an input byte needs to be escaped or not, we use a bitmask-lookup.
             // Therefore we split the input byte into the low- and high-nibble, which will get
             // the row-/column-index in the bit-mask.
-            // The bitmask-lookup looks like (here for example s_bitMaskLookupBasicLatin):
+            // The bitmask-lookup looks like:
             //                                     high-nibble
             // low-nibble  0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
             //         0   1   1   0   0   0   0   1   0   1   1   1   1   1   1   1   1
