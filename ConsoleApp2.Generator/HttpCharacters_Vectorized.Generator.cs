@@ -187,29 +187,13 @@ using System.Runtime.Intrinsics;
 
 [CompilerGenerated]
 internal static partial class HttpCharacters_Vectorized
-{
-    private static class Constants
-    {");
+{");
 
-            EmitConstant(builder, "LookupAlphaNumeric", s_alphaNumeric);
-            EmitConstant(builder, "LookupAuthority", s_authority);
-            EmitConstant(builder, "LookupToken", s_token);
-            EmitConstant(builder, "LookupHost", s_host);
-            EmitConstant(builder, "LookupFieldValue", s_fieldValue);
-
-            builder.Append(@"
-    }
-
-    // Due to a JIT limitation we need to slice these constants (see comments above) in order
-    // to ""unlink"" the span, and allow proper hoisting out of the loop.
-    // This is tracked in https://github.com/dotnet/runtime/issues/12241
-");
-
-            EmitLookup(builder, "LookupAlphaNumeric");
-            EmitLookup(builder, "LookupAuthority");
-            EmitLookup(builder, "LookupToken");
-            EmitLookup(builder, "LookupHost");
-            EmitLookup(builder, "LookupFieldValue");
+            EmitLookup(builder, "LookupAlphaNumeric", s_alphaNumeric);
+            EmitLookup(builder, "LookupAuthority", s_authority);
+            EmitLookup(builder, "LookupToken", s_token);
+            EmitLookup(builder, "LookupHost", s_host);
+            EmitLookup(builder, "LookupFieldValue", s_fieldValue);
 
             builder.AppendLine();
 
@@ -226,10 +210,10 @@ internal static partial class HttpCharacters_Vectorized
             context.AddSource("HttpCharacters_Vectorized.generated.cs", SourceText.From(code, Encoding.UTF8));
         }
         //---------------------------------------------------------------------
-        private void EmitConstant(StringBuilder builder, string name, bool[] lookup)
+        private void EmitLookup(StringBuilder builder, string name, bool[] lookup)
         {
             builder.Append($@"
-        public static ReadOnlySpan<bool> {name} => new bool[] {{ /* The first value is a dummy to workaround a JIT limitation */ false, ");
+    private static partial ReadOnlySpan<bool> {name}() => new bool[] {{ ");
 
             for (int i = 0; i < lookup.Length; ++i)
             {
@@ -242,12 +226,6 @@ internal static partial class HttpCharacters_Vectorized
             }
 
             builder.Append(" };");
-        }
-        //---------------------------------------------------------------------
-        private void EmitLookup(StringBuilder builder, string name)
-        {
-            builder.Append($@"
-    private static partial ReadOnlySpan<bool> {name}() => Constants.{name}.Slice(1);");
         }
         //---------------------------------------------------------------------
         private void EmitVector(StringBuilder builder, string name, sbyte[] mask)
