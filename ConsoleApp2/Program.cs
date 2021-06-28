@@ -25,8 +25,8 @@ BenchmarkRunner.Run<Bench>();
 public class Bench
 {
     //[Params("abc", "0123456789abcd❤efghij", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa❤aaaaaa")]
-    public string Host { get; set; } = "0123456789abcdefghijk❤";
-    //public string Host { get; set; } = "012";
+    //public string Host { get; set; } = "0123456789abcdefghij❤k";
+    public string Host { get; set; } = "01234567😊";
 
     public Bench()
     {

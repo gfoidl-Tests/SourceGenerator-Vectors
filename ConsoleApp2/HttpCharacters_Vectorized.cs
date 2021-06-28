@@ -16,128 +16,11 @@ internal static unsafe partial class HttpCharacters_Vectorized
     private static partial ReadOnlySpan<bool> LookupHost();
     private static partial ReadOnlySpan<bool> LookupFieldValue();
 
-    private static readonly Vector128<sbyte> s_bitMaskLookupAlphaNumeric;
-    private static readonly Vector128<sbyte> s_bitMaskLookupAuthority;
-    private static readonly Vector128<sbyte> s_bitMaskLookupToken;
-    private static readonly Vector128<sbyte> s_bitMaskLookupHost;
-    private static readonly Vector128<sbyte> s_bitMaskLookupFieldValue;
-
-    static HttpCharacters_Vectorized()
-    {
-        s_bitMaskLookupAlphaNumeric = InitializeAlphaNumeric();
-        s_bitMaskLookupAuthority = InitializeAuthority();
-        s_bitMaskLookupToken = InitializeToken();
-        s_bitMaskLookupHost = InitializeHost();
-        s_bitMaskLookupFieldValue = InitializeFieldValue();
-    }
-
-    [ModuleInitializer]
-    internal static void Init()
-    {
-        _ = s_bitMaskLookupAlphaNumeric;
-        _ = s_bitMaskLookupHost;
-    }
-
-    private static void SetBitInMask(sbyte* mask, int c)
-    {
-        Debug.Assert(c < 128);
-
-        int highNibble = c >> 4;
-        int lowNibble = c & 0xF;
-
-        mask[lowNibble] &= (sbyte)~(1 << highNibble);
-    }
-
-    private static Vector128<sbyte> InitializeAlphaNumeric()
-    {
-        // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
-
-        Vector128<sbyte> vector = Vector128<sbyte>.AllBitsSet;
-        sbyte* mask = (sbyte*)&vector;
-
-        SetMask('0', '9');
-        SetMask('A', 'Z');
-        SetMask('a', 'z');
-
-        void SetMask(char first, char last)
-        {
-            for (char c = first; c <= last; ++c)
-            {
-                SetBitInMask(mask, c);
-            }
-        }
-
-        return vector;
-    }
-
-    private static Vector128<sbyte> InitializeAuthority()
-    {
-        // Authority https://tools.ietf.org/html/rfc3986#section-3.2
-        // Examples:
-        // microsoft.com
-        // hostname:8080
-        // [::]:8080
-        // [fe80::]
-        // 127.0.0.1
-        // user@host.com
-        // user:password@host.com
-
-        Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
-        sbyte* mask = (sbyte*)&vector;
-
-        foreach (char c in ":.[]@")
-        {
-            SetBitInMask(mask, c);
-        }
-
-        return vector;
-    }
-
-    private static Vector128<sbyte> InitializeToken()
-    {
-        // tchar https://tools.ietf.org/html/rfc7230#appendix-B
-
-        Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
-        sbyte* mask = (sbyte*)&vector;
-
-        foreach (char c in "!#$%&\'*+-.^_`|~")
-        {
-            SetBitInMask(mask, c);
-        }
-
-        return vector;
-    }
-
-    private static Vector128<sbyte> InitializeHost()
-    {
-        // Matches Http.Sys
-        // Matches RFC 3986 except "*" / "+" / "," / ";" / "=" and "%" HEXDIG HEXDIG which are not allowed by Http.Sys
-
-        Vector128<sbyte> vector = s_bitMaskLookupAlphaNumeric;
-        sbyte* mask = (sbyte*)&vector;
-
-        foreach (char c in "!$&\'()-._~")
-        {
-            SetBitInMask(mask, c);
-        }
-
-        return vector;
-    }
-
-    private static Vector128<sbyte> InitializeFieldValue()
-    {
-        // field-value https://tools.ietf.org/html/rfc7230#section-3.2
-
-        Vector128<sbyte> vector = Vector128<sbyte>.AllBitsSet;
-        sbyte* mask = (sbyte*)&vector;
-
-        for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
-        {
-            SetBitInMask(mask, c);
-        }
-
-        return vector;
-    }
+    private static partial Vector128<sbyte> BitmaskAlphaNumeric();
+    private static partial Vector128<sbyte> BitMaskLookupAuthority();
+    private static partial Vector128<sbyte> BitMaskLookupToken();
+    private static partial Vector128<sbyte> BitMaskLookupHost();
+    private static partial Vector128<sbyte> BitMaskLookupFieldValue();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ContainsInvalidAuthorityChar(Span<byte> s)
@@ -145,7 +28,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         fixed (byte* ptr = s)
         {
             int index = Ssse3.IsSupported && s.Length >= Vector128<byte>.Count
-                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupAuthority)
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, BitMaskLookupAuthority())
                 : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupAuthority());
 
             return index >= 0;
@@ -157,8 +40,8 @@ internal static unsafe partial class HttpCharacters_Vectorized
     {
         fixed (char* ptr = s)
         {
-            return false && Ssse3.IsSupported && s.Length >= Vector128<short>.Count
-                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupHost)
+            return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, BitMaskLookupHost())
                 : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupHost());
         }
     }
@@ -169,7 +52,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         fixed (char* ptr = s)
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
-                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupToken)
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, BitMaskLookupToken())
                 : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupToken());
         }
     }
@@ -180,7 +63,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         fixed (byte* ptr = span)
         {
             return Ssse3.IsSupported && span.Length >= Vector128<byte>.Count
-                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)span.Length, s_bitMaskLookupToken)
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)span.Length, BitMaskLookupToken())
                 : IndexOfInvalidCharScalar(ptr, (nint)(uint)span.Length, LookupToken());
         }
     }
@@ -191,7 +74,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         fixed (char* ptr = s)
         {
             return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
-                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, s_bitMaskLookupFieldValue)
+                ? IndexOfInvalidCharVectorized(ptr, (nint)(uint)s.Length, BitMaskLookupFieldValue())
                 : IndexOfInvalidCharScalar(ptr, (nint)(uint)s.Length, LookupFieldValue());
         }
     }

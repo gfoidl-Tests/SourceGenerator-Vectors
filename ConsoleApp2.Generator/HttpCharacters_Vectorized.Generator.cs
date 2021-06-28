@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Text;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.Text;
@@ -6,38 +7,73 @@ using Microsoft.CodeAnalysis.Text;
 namespace ConsoleApp2.Generator
 {
     [Generator]
-    public class HttpCharactersGenerator : ISourceGenerator
+    public unsafe class HttpCharactersGenerator : ISourceGenerator
     {
         private const int TableSize = 128;
 
-        private static readonly bool[] s_alphaNumeric = InitializeAlphaNumeric();
-        private static readonly bool[] s_authority = InitializeAuthority();
-        private static readonly bool[] s_token = InitializeToken();
-        private static readonly bool[] s_host = InitializeHost();
-        private static readonly bool[] s_fieldValue = InitializeFieldValue();
+        private static readonly bool[] s_alphaNumeric;
+        private static readonly bool[] s_authority;
+        private static readonly bool[] s_token;
+        private static readonly bool[] s_host;
+        private static readonly bool[] s_fieldValue;
+
+        private static readonly sbyte[] s_bitMaskLookupAlphaNumeric;
+        private static readonly sbyte[] s_bitMaskLookupAuthority;
+        private static readonly sbyte[] s_bitMaskLookupToken;
+        private static readonly sbyte[] s_bitMaskLookupHost;
+        private static readonly sbyte[] s_bitMaskLookupFieldValue;
         //---------------------------------------------------------------------
-        private static bool[] InitializeAlphaNumeric()
+        static HttpCharactersGenerator()
+        {
+            (s_alphaNumeric, s_bitMaskLookupAlphaNumeric) = InitializeAlphaNumeric();
+            (s_authority, s_bitMaskLookupAuthority) = InitializeAuthority();
+            (s_token, s_bitMaskLookupToken) = InitializeToken();
+            (s_host, s_bitMaskLookupHost) = InitializeHost();
+            (s_fieldValue, s_bitMaskLookupFieldValue) = InitializeFieldValue();
+        }
+        //---------------------------------------------------------------------
+        private static void SetBitInMask(sbyte* mask, int c)
+        {
+            Debug.Assert(c < 128);
+
+            int highNibble = c >> 4;
+            int lowNibble = c & 0xF;
+
+            mask[lowNibble] &= (sbyte)~(1 << highNibble);
+        }
+        //---------------------------------------------------------------------
+        private static (bool[], sbyte[]) InitializeAlphaNumeric()
         {
             // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
 
             bool[] alphaNumeric = new bool[TableSize];
+            sbyte[] vector = new sbyte[128 / 8];
 
-            SetMask('0', '9');
-            SetMask('A', 'Z');
-            SetMask('a', 'z');
+            for (int i = 0; i < vector.Length; ++i)
+            {
+                vector[i] = -1;
+            }
 
-            void SetMask(char first, char last)
+            fixed (sbyte* mask = vector)
+            {
+                SetMask(mask, '0', '9');
+                SetMask(mask, 'A', 'Z');
+                SetMask(mask, 'a', 'z');
+            }
+
+            return (alphaNumeric, vector);
+
+            void SetMask(sbyte* mask, char first, char last)
             {
                 for (char c = first; c <= last; ++c)
                 {
                     alphaNumeric[c] = true;
+                    SetBitInMask(mask, c);
                 }
             }
-
-            return alphaNumeric;
         }
 
-        private static bool[] InitializeAuthority()
+        private static (bool[], sbyte[]) InitializeAuthority()
         {
             // Authority https://tools.ietf.org/html/rfc3986#section-3.2
             // Examples:
@@ -52,30 +88,44 @@ namespace ConsoleApp2.Generator
             bool[] authority = new bool[TableSize];
             Array.Copy(s_alphaNumeric, authority, TableSize);
 
-            foreach (char c in ":.[]@")
+            sbyte[] vector = new sbyte[128 / 8];
+            Array.Copy(s_bitMaskLookupAlphaNumeric, vector, vector.Length);
+
+            fixed (sbyte* mask = vector)
             {
-                authority[c] = true;
+                foreach (char c in ":.[]@")
+                {
+                    authority[c] = true;
+                    SetBitInMask(mask, c);
+                }
             }
 
-            return authority;
+            return (authority, vector);
         }
 
-        private static bool[] InitializeToken()
+        private static (bool[], sbyte[]) InitializeToken()
         {
             // tchar https://tools.ietf.org/html/rfc7230#appendix-B
 
             bool[] token = new bool[TableSize];
             Array.Copy(s_alphaNumeric, token, TableSize);
 
-            foreach (char c in "!#$%&\'*+-.^_`|~")
+            sbyte[] vector = new sbyte[128 / 8];
+            Array.Copy(s_bitMaskLookupAlphaNumeric, vector, vector.Length);
+
+            fixed (sbyte* mask = vector)
             {
-                token[c] = true;
+                foreach (char c in "!#$%&\'*+-.^_`|~")
+                {
+                    token[c] = true;
+                    SetBitInMask(mask, c);
+                }
             }
 
-            return token;
+            return (token, vector);
         }
 
-        private static bool[] InitializeHost()
+        private static (bool[], sbyte[]) InitializeHost()
         {
             // Matches Http.Sys
             // Matches RFC 3986 except "*" / "+" / "," / ";" / "=" and "%" HEXDIG HEXDIG which are not allowed by Http.Sys
@@ -83,26 +133,43 @@ namespace ConsoleApp2.Generator
             bool[] host = new bool[TableSize];
             Array.Copy(s_alphaNumeric, host, TableSize);
 
-            foreach (char c in "!$&\'()-._~")
+            sbyte[] vector = new sbyte[128 / 8];
+            Array.Copy(s_bitMaskLookupAlphaNumeric, vector, vector.Length);
+
+            fixed (sbyte* mask = vector)
             {
-                host[c] = true;
+                foreach (char c in "!$&\'()-._~")
+                {
+                    host[c] = true;
+                    SetBitInMask(mask, c);
+                }
             }
 
-            return host;
+            return (host, vector);
         }
 
-        private static bool[] InitializeFieldValue()
+        private static (bool[], sbyte[]) InitializeFieldValue()
         {
             // field-value https://tools.ietf.org/html/rfc7230#section-3.2
 
             bool[] fieldValue = new bool[TableSize];
+            sbyte[] vector = new sbyte[128 / 8];
 
-            for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
+            for (int i = 0; i < vector.Length; ++i)
             {
-                fieldValue[c] = true;
+                vector[i] = -1;
             }
 
-            return fieldValue;
+            fixed (sbyte* mask = vector)
+            {
+                for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
+                {
+                    fieldValue[c] = true;
+                    SetBitInMask(mask, c);
+                }
+            }
+
+            return (fieldValue, vector);
         }
         //---------------------------------------------------------------------
         public void Initialize(GeneratorInitializationContext context)
@@ -115,6 +182,8 @@ namespace ConsoleApp2.Generator
             builder.Append(@"
 using System;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 [CompilerGenerated]
 internal static partial class HttpCharacters_Vectorized
@@ -142,17 +211,19 @@ internal static partial class HttpCharacters_Vectorized
             EmitLookup(builder, "LookupHost");
             EmitLookup(builder, "LookupFieldValue");
 
+            builder.AppendLine();
+
+            EmitVector(builder, "BitmaskAlphaNumeric", s_bitMaskLookupAlphaNumeric);
+            EmitVector(builder, "BitMaskLookupAuthority", s_bitMaskLookupAuthority);
+            EmitVector(builder, "BitMaskLookupToken", s_bitMaskLookupToken);
+            EmitVector(builder, "BitMaskLookupHost", s_bitMaskLookupHost);
+            EmitVector(builder, "BitMaskLookupFieldValue", s_bitMaskLookupFieldValue);
+
             builder.Append(@"
 }
 ");
             string code = builder.ToString();
             context.AddSource("HttpCharacters_Vectorized.generated.cs", SourceText.From(code, Encoding.UTF8));
-        }
-        //---------------------------------------------------------------------
-        private void EmitLookup(StringBuilder builder, string name)
-        {
-            builder.Append($@"
-    private static partial ReadOnlySpan<bool> {name}() => Constants.{name}.Slice(1);");
         }
         //---------------------------------------------------------------------
         private void EmitConstant(StringBuilder builder, string name, bool[] lookup)
@@ -171,6 +242,30 @@ internal static partial class HttpCharacters_Vectorized
             }
 
             builder.Append(" };");
+        }
+        //---------------------------------------------------------------------
+        private void EmitLookup(StringBuilder builder, string name)
+        {
+            builder.Append($@"
+    private static partial ReadOnlySpan<bool> {name}() => Constants.{name}.Slice(1);");
+        }
+        //---------------------------------------------------------------------
+        private void EmitVector(StringBuilder builder, string name, sbyte[] mask)
+        {
+            builder.Append($@"
+    [MethodImpl(MethodImplOptions.AggressiveInlining)] private static partial Vector128<sbyte> {name}() => Vector128.Create(");
+
+            for (int i = 0; i < mask.Length; ++i)
+            {
+                builder.Append(mask[i]);
+
+                if (i < mask.Length - 1)
+                {
+                    builder.Append(", ");
+                }
+            }
+
+            builder.Append(");");
         }
     }
 }
