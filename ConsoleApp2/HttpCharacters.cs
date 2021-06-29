@@ -1,4 +1,7 @@
-﻿using System;
+﻿// Copyright (c) .NET Foundation. All rights reserved.
+// Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
+
+using System;
 using System.Runtime.CompilerServices;
 
 internal static class HttpCharacters
@@ -13,7 +16,7 @@ internal static class HttpCharacters
     internal static void Initialize()
     {
         // Access _alphaNumeric to initialize static fields
-        var initialize = s_alphaNumeric;
+        _ = s_alphaNumeric;
     }
 
     private static bool[] InitializeAlphaNumeric()
@@ -177,6 +180,7 @@ internal static class HttpCharacters
         return -1;
     }
 
+    // Disallows control characters and anything more than 0x7E
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidFieldValueChar(string s)
     {
@@ -186,6 +190,24 @@ internal static class HttpCharacters
         {
             var c = s[i];
             if (c >= (uint)fieldValue.Length || !fieldValue[c])
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    // Disallows control characters but allows extended characters > 0x7F
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int IndexOfInvalidFieldValueCharExtended(string s)
+    {
+        var fieldValue = s_fieldValue;
+
+        for (var i = 0; i < s.Length; i++)
+        {
+            var c = s[i];
+            if (c < (uint)fieldValue.Length && !fieldValue[c])
             {
                 return i;
             }

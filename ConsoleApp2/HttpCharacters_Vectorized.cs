@@ -77,6 +77,27 @@ internal static unsafe partial class HttpCharacters_Vectorized
         }
     }
 
+    // Disallows control characters but allows extended characters > 0x7F
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int IndexOfInvalidFieldValueCharExtended(string s)
+    {
+        // This is to workaround  https://github.com/dotnet/runtime/issues/12241
+        ReadOnlySpan<bool> fieldValue = LookupFieldValue();
+        ref bool lookupRef = ref MemoryMarshal.GetReference(fieldValue);
+
+        for (int i = 0; i < s.Length; i++)
+        {
+            char c = s[i];
+
+            if (c < (uint)fieldValue.Length && !Unsafe.Add(ref lookupRef, (uint)c))
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharScalar(char* ptr, nint length, ReadOnlySpan<bool> lookup)
     {
