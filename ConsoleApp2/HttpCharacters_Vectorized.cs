@@ -81,21 +81,12 @@ internal static unsafe partial class HttpCharacters_Vectorized
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidFieldValueCharExtended(string s)
     {
-        // This is to workaround  https://github.com/dotnet/runtime/issues/12241
-        ReadOnlySpan<bool> fieldValue = LookupFieldValue();
-        ref bool lookupRef = ref MemoryMarshal.GetReference(fieldValue);
-
-        for (int i = 0; i < s.Length; i++)
+        fixed (char* ptr = s)
         {
-            char c = s[i];
-
-            if (c < (uint)fieldValue.Length && !Unsafe.Add(ref lookupRef, (uint)c))
-            {
-                return i;
-            }
+            return Ssse3.IsSupported && s.Length >= Vector128<short>.Count
+                ? IndexOfInvalidCharExtendedVectorized(ptr, (nint)(uint)s.Length, BitMaskLookupFieldValue())
+                : IndexOfInvalidCharExtendedScalar(ptr, (nint)(uint)s.Length, LookupFieldValue());
         }
-
-        return -1;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -128,6 +119,25 @@ internal static unsafe partial class HttpCharacters_Vectorized
             byte b = ptr[i];
 
             if (b >= lookup.Length || !Unsafe.Add(ref lookupRef, (uint)b))
+            {
+                return (int)i;
+            }
+        }
+
+        return -1;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int IndexOfInvalidCharExtendedScalar(char* ptr, nint length, ReadOnlySpan<bool> lookup)
+    {
+        // This is to workaround  https://github.com/dotnet/runtime/issues/12241
+        ref bool lookupRef = ref MemoryMarshal.GetReference(lookup);
+
+        for (nint i = 0; i < length; i++)
+        {
+            char c = ptr[i];
+
+            if (c < (uint)lookup.Length && !Unsafe.Add(ref lookupRef, (uint)c))
             {
                 return (int)i;
             }
@@ -286,6 +296,111 @@ internal static unsafe partial class HttpCharacters_Vectorized
         return -1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int IndexOfInvalidCharExtendedVectorized(char* ptr, nint length, Vector128<sbyte> bitMaskLookup)
+    {
+        Debug.Assert(Ssse3.IsSupported);
+        Debug.Assert(length >= Vector128<short>.Count);
+
+        // To check if a bit in a bitmask from the Bitmask is set, in a sequential code
+        // we would do ((1 << bitIndex) & bitmask) != 0
+        // As there is no hardware instrinic for such a shift, we use a lookup that
+        // stores the shifted bitpositions.
+        // So (1 << bitIndex) becomes BitPosLook[bitIndex], which is simd-friendly.
+        //
+        // A bitmask from the bitMaskLookup is created only for values 0..7 (one byte),
+        // so to avoid a explicit check for values outside 0..7, i.e.
+        // high nibbles 8..F, we use a bitpos that always results in escaping.
+        Vector128<sbyte> bitPosLookup = Vector128.Create(
+            0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80,     // high-nibble 0..7
+            0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF      // high-nibble 8..F
+        ).AsSByte();
+
+        Vector128<sbyte> nibbleMaskSByte = Vector128.Create((sbyte)0xF);
+        Vector128<sbyte> nullMaskSByte = Vector128<sbyte>.Zero;
+        Vector128<short> asciiMaskShort = Vector128.Create((short)0x00_7F);
+
+        nint idx = 0;
+        int mask;
+
+        while (length - 2 * Vector128<short>.Count >= idx)
+        {
+            Vector128<short> source0 = Sse2.LoadVector128((short*)(ptr + idx));
+            Vector128<short> source1 = Sse2.LoadVector128((short*)(ptr + idx + 8));
+            Vector128<sbyte> values = Sse2.PackSignedSaturate(source0, source1);
+
+            Vector128<short> gt0x7F = Sse2.CompareGreaterThan(source0, asciiMaskShort);
+            Vector128<short> lt0x00 = Sse2.CompareLessThan(source0, nullMaskSByte.AsInt16());
+            Vector128<short> nonAscii0 = Sse2.Or(gt0x7F, lt0x00);
+
+            gt0x7F = Sse2.CompareGreaterThan(source1, asciiMaskShort);
+            lt0x00 = Sse2.CompareLessThan(source1, nullMaskSByte.AsInt16());
+            Vector128<short> nonAscii1 = Sse2.Or(gt0x7F, lt0x00);
+
+            Vector128<sbyte> nonAsciiMask = Sse2.PackSignedSaturate(nonAscii0, nonAscii1);
+
+            mask = Ssse3Helper.CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte, nonAsciiMask);
+            if (mask != 0)
+            {
+                goto Found;
+            }
+
+            idx += 2 * Vector128<short>.Count;
+        }
+
+        // Here we know that 8 to 15 chars are remaining. Process the first 8 chars.
+        if (length - Vector128<short>.Count >= idx)
+        {
+            Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx));
+            Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
+
+            Vector128<short> gt0x7F = Sse2.CompareGreaterThan(source, asciiMaskShort);
+            Vector128<short> lt0x00 = Sse2.CompareLessThan(source, nullMaskSByte.AsInt16());
+            Vector128<short> nonAscii = Sse2.Or(gt0x7F, lt0x00);
+            Vector128<sbyte> nonAsciiMask = Sse2.PackSignedSaturate(nonAscii, nonAscii);
+
+            mask = Ssse3Helper.CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte, nonAsciiMask);
+            if (mask != 0)
+            {
+                goto Found;
+            }
+
+            idx += Vector128<short>.Count;
+        }
+
+        // Here we know that < 8 chars are remaining. We shift the space around to process
+        // another full vector.
+        nint remaining = length - idx;
+        if (remaining > 0)
+        {
+            remaining -= Vector128<short>.Count;
+
+            Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx + remaining));
+            Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
+
+            Vector128<short> gt0x7F = Sse2.CompareGreaterThan(source, asciiMaskShort);
+            Vector128<short> lt0x00 = Sse2.CompareLessThan(source, nullMaskSByte.AsInt16());
+            Vector128<short> nonAscii = Sse2.Or(gt0x7F, lt0x00);
+            Vector128<sbyte> nonAsciiMask = Sse2.PackSignedSaturate(nonAscii, nonAscii);
+
+            mask = Ssse3Helper.CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte, nonAsciiMask);
+            if (mask != 0)
+            {
+                idx += remaining;
+                goto Found;
+            }
+        }
+
+        goto NotFound;
+
+    Found:
+        idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
+        return (int)idx;
+
+    NotFound:
+        return -1;
+    }
+
     internal static class BitHelper
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -353,6 +468,32 @@ internal static unsafe partial class HttpCharacters_Vectorized
             Vector128<sbyte> mask = Sse2.And(bitPositions, bitMask);
 
             Vector128<sbyte> comparison = Sse2.CompareEqual(nullMaskSByte, Sse2.CompareEqual(nullMaskSByte, mask));
+            return Sse2.MoveMask(comparison);
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int CreateEscapingMaskExtended(
+            Vector128<sbyte> values,
+            Vector128<sbyte> bitMaskLookup,
+            Vector128<sbyte> bitPosLookup,
+            Vector128<sbyte> nibbleMaskSByte,
+            Vector128<sbyte> nullMaskSByte,
+            Vector128<sbyte> nonAsciiMask)
+        {
+            Debug.Assert(Ssse3.IsSupported);
+
+            Vector128<sbyte> highNibbles = Sse2.And(Sse2.ShiftRightLogical(values.AsInt32(), 4).AsSByte(), nibbleMaskSByte);
+            Vector128<sbyte> lowNibbles = Sse2.And(values, nibbleMaskSByte);
+
+            Vector128<sbyte> bitMask = Ssse3.Shuffle(bitMaskLookup, lowNibbles);
+            Vector128<sbyte> bitPositions = Ssse3.Shuffle(bitPosLookup, highNibbles);
+
+            Vector128<sbyte> mask = Sse2.And(bitPositions, bitMask);
+
+            Vector128<sbyte> comparison = Sse2.CompareEqual(mask, nullMaskSByte);
+            comparison = Sse2.CompareEqual(comparison, nullMaskSByte);
+            comparison = Sse2.Xor(comparison, nonAsciiMask);
+
             return Sse2.MoveMask(comparison);
         }
     }
