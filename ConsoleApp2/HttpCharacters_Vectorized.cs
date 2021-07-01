@@ -323,24 +323,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         nint idx = 0;
         int mask;
 
-        while (length - 2 * Vector128<short>.Count >= idx)
-        {
-            Vector128<short> source0 = Sse2.LoadVector128((short*)(ptr + idx));
-            Vector128<short> source1 = Sse2.LoadVector128((short*)(ptr + idx + 8));
-            Vector128<sbyte> values = Sse2.PackSignedSaturate(source0, source1);
-            Vector128<sbyte> asciiMask = CreateAsciiMask(nonAsciiMaskShort, zeroMaskSByte, source0, source1);
-
-            mask = CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte, asciiMask);
-            if (mask != 0)
-            {
-                goto Found;
-            }
-
-            idx += 2 * Vector128<short>.Count;
-        }
-
-        // Here we know that 8 to 15 chars are remaining. Process the first 8 chars.
-        if (length - Vector128<short>.Count >= idx)
+        while (length - Vector128<short>.Count >= idx)
         {
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
@@ -384,20 +367,11 @@ internal static unsafe partial class HttpCharacters_Vectorized
         return -1;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        static Vector128<sbyte> CreateAsciiMask(Vector128<short> nonAsciiMask, Vector128<sbyte> zero, Vector128<short> first, Vector128<short>? second = null)
+        static Vector128<sbyte> CreateAsciiMask(Vector128<short> nonAsciiMask, Vector128<sbyte> zero, Vector128<short> first)
         {
-            Vector128<short> firstMasked = Sse2.And(first, nonAsciiMask);
-            Vector128<short> firstAscii = Sse2.CompareEqual(firstMasked, zero.AsInt16());
-
-            if (second is null)
-            {
-                return Sse2.PackSignedSaturate(firstAscii, firstAscii);
-            }
-
-            Vector128<short> secondMasked = Sse2.And(second.GetValueOrDefault(), nonAsciiMask);
-            Vector128<short> secondAscii = Sse2.CompareEqual(secondMasked, zero.AsInt16());
-
-            return Sse2.PackSignedSaturate(firstAscii, secondAscii);
+            Vector128<short> masked = Sse2.And(first, nonAsciiMask);
+            Vector128<short> ascii = Sse2.CompareEqual(masked, zero.AsInt16());
+            return Sse2.PackSignedSaturate(ascii, ascii);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
