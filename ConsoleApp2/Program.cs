@@ -25,8 +25,8 @@ BenchmarkRunner.Run<Bench>();
 public class Bench
 {
     //[Params("abc", "0123456789abcd❤efghij", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa❤aaaaaa")]
-    //public string Host { get; set; } = "0123456789abcdefghij❤k";
-    public string Host { get; set; } = "01234567😊";
+    public string Host { get; set; } = "0123456789abcdefghij❤k";
+    //public string Host { get; set; } = "microsoft.com";
 
     public Bench()
     {
@@ -35,13 +35,13 @@ public class Bench
     }
 
     //[Benchmark(Baseline = true)]
-    public int Default() => HttpCharacters.IndexOfInvalidHostChar(this.Host);
+    public int Default() => HttpCharacters.IndexOfInvalidFieldValueCharExtended(this.Host);
 
     //[Benchmark]
     public int BitArrayBased() => HttpCharacters_BitArray.IndexOfInvalidHostChar(this.Host);
 
     [Benchmark]
-    public int Vectorized() => HttpCharacters_Vectorized.IndexOfInvalidHostChar(this.Host);
+    public int Vectorized() => HttpCharacters_Vectorized.IndexOfInvalidFieldValueCharExtended(this.Host);
 }
 
 [ShortRunJob]

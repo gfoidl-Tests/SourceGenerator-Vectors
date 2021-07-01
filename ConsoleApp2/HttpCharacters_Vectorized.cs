@@ -167,7 +167,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         ).AsSByte();
 
         Vector128<sbyte> nibbleMaskSByte = Vector128.Create((sbyte)0xF);
-        Vector128<sbyte> nullMaskSByte = Vector128<sbyte>.Zero;
+        Vector128<sbyte> zeroMaskSByte = Vector128<sbyte>.Zero;
 
         nint idx = 0;
         int mask;
@@ -178,7 +178,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
             Vector128<short> source1 = Sse2.LoadVector128((short*)(ptr + idx + 8));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source0, source1);
 
-            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
             if (mask != 0)
             {
                 goto Found;
@@ -193,7 +193,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
 
-            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
             if (mask != 0)
             {
                 goto Found;
@@ -212,7 +212,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx + remaining));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
 
-            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
             if (mask != 0)
             {
                 idx += remaining;
@@ -223,7 +223,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         goto NotFound;
 
     Found:
-        idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
+        idx += (nint)(uint)GetIndexOfFirstNeedToEscape(mask);
         return (int)idx;
 
     NotFound:
@@ -251,7 +251,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         ).AsSByte();
 
         Vector128<sbyte> nibbleMaskSByte = Vector128.Create((sbyte)0xF);
-        Vector128<sbyte> nullMaskSByte = Vector128<sbyte>.Zero;
+        Vector128<sbyte> zeroMaskSByte = Vector128<sbyte>.Zero;
 
         nint idx = 0;
         int mask;
@@ -260,7 +260,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         {
             Vector128<sbyte> values = Sse2.LoadVector128((sbyte*)(ptr + idx));
 
-            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
             if (mask != 0)
             {
                 goto Found;
@@ -278,7 +278,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
 
             Vector128<sbyte> values = Sse2.LoadVector128((sbyte*)ptr + idx + remaining);
 
-            mask = Ssse3Helper.CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte);
+            mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
             if (mask != 0)
             {
                 idx += remaining;
@@ -289,7 +289,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         goto NotFound;
 
     Found:
-        idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
+        idx += (nint)(uint)GetIndexOfFirstNeedToEscape(mask);
         return (int)idx;
 
     NotFound:
@@ -317,8 +317,8 @@ internal static unsafe partial class HttpCharacters_Vectorized
         ).AsSByte();
 
         Vector128<sbyte> nibbleMaskSByte = Vector128.Create((sbyte)0xF);
-        Vector128<sbyte> nullMaskSByte = Vector128<sbyte>.Zero;
-        Vector128<short> asciiMaskShort = Vector128.Create((short)0x00_7F);
+        Vector128<sbyte> zeroMaskSByte = Vector128<sbyte>.Zero;
+        Vector128<short> nonAsciiMaskShort = Vector128.Create((ushort)0xFF80).AsInt16();
 
         nint idx = 0;
         int mask;
@@ -328,18 +328,9 @@ internal static unsafe partial class HttpCharacters_Vectorized
             Vector128<short> source0 = Sse2.LoadVector128((short*)(ptr + idx));
             Vector128<short> source1 = Sse2.LoadVector128((short*)(ptr + idx + 8));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source0, source1);
+            Vector128<sbyte> asciiMask = CreateAsciiMask(nonAsciiMaskShort, zeroMaskSByte, source0, source1);
 
-            Vector128<short> gt0x7F = Sse2.CompareGreaterThan(source0, asciiMaskShort);
-            Vector128<short> lt0x00 = Sse2.CompareLessThan(source0, nullMaskSByte.AsInt16());
-            Vector128<short> nonAscii0 = Sse2.Or(gt0x7F, lt0x00);
-
-            gt0x7F = Sse2.CompareGreaterThan(source1, asciiMaskShort);
-            lt0x00 = Sse2.CompareLessThan(source1, nullMaskSByte.AsInt16());
-            Vector128<short> nonAscii1 = Sse2.Or(gt0x7F, lt0x00);
-
-            Vector128<sbyte> nonAsciiMask = Sse2.PackSignedSaturate(nonAscii0, nonAscii1);
-
-            mask = Ssse3Helper.CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte, nonAsciiMask);
+            mask = CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte, asciiMask);
             if (mask != 0)
             {
                 goto Found;
@@ -353,13 +344,9 @@ internal static unsafe partial class HttpCharacters_Vectorized
         {
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
+            Vector128<sbyte> asciiMask = CreateAsciiMask(nonAsciiMaskShort, zeroMaskSByte, source);
 
-            Vector128<short> gt0x7F = Sse2.CompareGreaterThan(source, asciiMaskShort);
-            Vector128<short> lt0x00 = Sse2.CompareLessThan(source, nullMaskSByte.AsInt16());
-            Vector128<short> nonAscii = Sse2.Or(gt0x7F, lt0x00);
-            Vector128<sbyte> nonAsciiMask = Sse2.PackSignedSaturate(nonAscii, nonAscii);
-
-            mask = Ssse3Helper.CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte, nonAsciiMask);
+            mask = CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte, asciiMask);
             if (mask != 0)
             {
                 goto Found;
@@ -377,13 +364,9 @@ internal static unsafe partial class HttpCharacters_Vectorized
 
             Vector128<short> source = Sse2.LoadVector128((short*)(ptr + idx + remaining));
             Vector128<sbyte> values = Sse2.PackSignedSaturate(source, source);
+            Vector128<sbyte> asciiMask = CreateAsciiMask(nonAsciiMaskShort, zeroMaskSByte, source);
 
-            Vector128<short> gt0x7F = Sse2.CompareGreaterThan(source, asciiMaskShort);
-            Vector128<short> lt0x00 = Sse2.CompareLessThan(source, nullMaskSByte.AsInt16());
-            Vector128<short> nonAscii = Sse2.Or(gt0x7F, lt0x00);
-            Vector128<sbyte> nonAsciiMask = Sse2.PackSignedSaturate(nonAscii, nonAscii);
-
-            mask = Ssse3Helper.CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, nullMaskSByte, nonAsciiMask);
+            mask = CreateEscapingMaskExtended(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte, asciiMask);
             if (mask != 0)
             {
                 idx += remaining;
@@ -394,91 +377,37 @@ internal static unsafe partial class HttpCharacters_Vectorized
         goto NotFound;
 
     Found:
-        idx += (nint)(uint)BitHelper.GetIndexOfFirstNeedToEscape(mask);
+        idx += (nint)(uint)GetIndexOfFirstNeedToEscape(mask);
         return (int)idx;
 
     NotFound:
         return -1;
-    }
 
-    internal static class BitHelper
-    {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int GetIndexOfFirstNeedToEscape(int index)
+        static Vector128<sbyte> CreateAsciiMask(Vector128<short> nonAsciiMask, Vector128<sbyte> zero, Vector128<short> first, Vector128<short>? second = null)
         {
-            // Found at least one byte that needs to be escaped, figure out the index of
-            // the first one found that needed to be escaped within the 16 bytes.
-            Debug.Assert(index > 0 && index <= 65_535);
-            int tzc = BitOperations.TrailingZeroCount(index);
-            Debug.Assert(tzc >= 0 && tzc < 16);
+            Vector128<short> firstMasked = Sse2.And(first, nonAsciiMask);
+            Vector128<short> firstAscii = Sse2.CompareEqual(firstMasked, zero.AsInt16());
 
-            return tzc;
-        }
-    }
+            if (second is null)
+            {
+                return Sse2.PackSignedSaturate(firstAscii, firstAscii);
+            }
 
-    internal static class Ssse3Helper
-    {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CreateEscapingMask(
-            Vector128<sbyte> values,
-            Vector128<sbyte> bitMaskLookup,
-            Vector128<sbyte> bitPosLookup,
-            Vector128<sbyte> nibbleMaskSByte,
-            Vector128<sbyte> nullMaskSByte)
-        {
-            // To check if an input byte needs to be escaped or not, we use a bitmask-lookup.
-            // Therefore we split the input byte into the low- and high-nibble, which will get
-            // the row-/column-index in the bit-mask.
-            // The bitmask-lookup looks like:
-            //                                     high-nibble
-            // low-nibble  0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
-            //         0   1   1   0   0   0   0   1   0   1   1   1   1   1   1   1   1
-            //         1   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         2   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         3   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         4   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         5   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         6   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         7   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         8   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         9   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         A   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         B   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         C   1   1   0   1   0   1   0   0   1   1   1   1   1   1   1   1
-            //         D   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
-            //         E   1   1   0   1   0   0   0   0   1   1   1   1   1   1   1   1
-            //         F   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1   1
-            //
-            // where 1 denotes the neeed for escaping, while 0 means no escaping needed.
-            // For high-nibbles in the range 8..F every input needs to be escaped, so we
-            // can omit them in the bit-mask, thus only high-nibbles in the range 0..7 need
-            // to be considered, hence the entries in the bit-mask can be of type byte.
-            //
-            // In the bitmask-lookup for each row (= low-nibble) a bit-mask for the
-            // high-nibbles (= columns) is created.
+            Vector128<short> secondMasked = Sse2.And(second.GetValueOrDefault(), nonAsciiMask);
+            Vector128<short> secondAscii = Sse2.CompareEqual(secondMasked, zero.AsInt16());
 
-            Debug.Assert(Ssse3.IsSupported);
-
-            Vector128<sbyte> highNibbles = Sse2.And(Sse2.ShiftRightLogical(values.AsInt32(), 4).AsSByte(), nibbleMaskSByte);
-            Vector128<sbyte> lowNibbles = Sse2.And(values, nibbleMaskSByte);
-
-            Vector128<sbyte> bitMask = Ssse3.Shuffle(bitMaskLookup, lowNibbles);
-            Vector128<sbyte> bitPositions = Ssse3.Shuffle(bitPosLookup, highNibbles);
-
-            Vector128<sbyte> mask = Sse2.And(bitPositions, bitMask);
-
-            Vector128<sbyte> comparison = Sse2.CompareEqual(nullMaskSByte, Sse2.CompareEqual(nullMaskSByte, mask));
-            return Sse2.MoveMask(comparison);
+            return Sse2.PackSignedSaturate(firstAscii, secondAscii);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static int CreateEscapingMaskExtended(
+        static int CreateEscapingMaskExtended(
             Vector128<sbyte> values,
             Vector128<sbyte> bitMaskLookup,
             Vector128<sbyte> bitPosLookup,
             Vector128<sbyte> nibbleMaskSByte,
             Vector128<sbyte> nullMaskSByte,
-            Vector128<sbyte> nonAsciiMask)
+            Vector128<sbyte> asciiMask)
         {
             Debug.Assert(Ssse3.IsSupported);
 
@@ -492,9 +421,74 @@ internal static unsafe partial class HttpCharacters_Vectorized
 
             Vector128<sbyte> comparison = Sse2.CompareEqual(mask, nullMaskSByte);
             comparison = Sse2.CompareEqual(comparison, nullMaskSByte);
-            comparison = Sse2.Xor(comparison, nonAsciiMask);
+            comparison = Sse2.And(comparison, asciiMask);
 
             return Sse2.MoveMask(comparison);
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int GetIndexOfFirstNeedToEscape(int index)
+    {
+        // Found at least one byte that needs to be escaped, figure out the index of
+        // the first one found that needed to be escaped within the 16 bytes.
+        Debug.Assert(index > 0 && index <= 65_535);
+        int tzc = BitOperations.TrailingZeroCount(index);
+        Debug.Assert(tzc >= 0 && tzc < 16);
+
+        return tzc;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int CreateEscapingMask(
+        Vector128<sbyte> values,
+        Vector128<sbyte> bitMaskLookup,
+        Vector128<sbyte> bitPosLookup,
+        Vector128<sbyte> nibbleMaskSByte,
+        Vector128<sbyte> nullMaskSByte)
+    {
+        // To check if an input byte needs to be escaped or not, we use a bitmask-lookup.
+        // Therefore we split the input byte into the low- and high-nibble, which will get
+        // the row-/column-index in the bit-mask.
+        // The bitmask-lookup looks like:
+        //                                     high-nibble
+        // low-nibble  0   1   2   3   4   5   6   7   8   9   A   B   C   D   E   F
+        //         0   1   1   0   0   0   0   1   0   1   1   1   1   1   1   1   1
+        //         1   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         2   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         3   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         4   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         5   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         6   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         7   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         8   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         9   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         A   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         B   1   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         C   1   1   0   1   0   1   0   0   1   1   1   1   1   1   1   1
+        //         D   1   1   0   0   0   0   0   0   1   1   1   1   1   1   1   1
+        //         E   1   1   0   1   0   0   0   0   1   1   1   1   1   1   1   1
+        //         F   1   1   0   0   0   0   0   1   1   1   1   1   1   1   1   1
+        //
+        // where 1 denotes the neeed for escaping, while 0 means no escaping needed.
+        // For high-nibbles in the range 8..F every input needs to be escaped, so we
+        // can omit them in the bit-mask, thus only high-nibbles in the range 0..7 need
+        // to be considered, hence the entries in the bit-mask can be of type byte.
+        //
+        // In the bitmask-lookup for each row (= low-nibble) a bit-mask for the
+        // high-nibbles (= columns) is created.
+
+        Debug.Assert(Ssse3.IsSupported);
+
+        Vector128<sbyte> highNibbles = Sse2.And(Sse2.ShiftRightLogical(values.AsInt32(), 4).AsSByte(), nibbleMaskSByte);
+        Vector128<sbyte> lowNibbles = Sse2.And(values, nibbleMaskSByte);
+
+        Vector128<sbyte> bitMask = Ssse3.Shuffle(bitMaskLookup, lowNibbles);
+        Vector128<sbyte> bitPositions = Ssse3.Shuffle(bitPosLookup, highNibbles);
+
+        Vector128<sbyte> mask = Sse2.And(bitPositions, bitMask);
+
+        Vector128<sbyte> comparison = Sse2.CompareEqual(nullMaskSByte, Sse2.CompareEqual(nullMaskSByte, mask));
+        return Sse2.MoveMask(comparison);
     }
 }
