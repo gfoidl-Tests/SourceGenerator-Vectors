@@ -1,5 +1,5 @@
-﻿// Copyright (c) .NET Foundation. All rights reserved.
-// Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
+﻿// Licensed to the .NET Foundation under one or more agreements.
+// The .NET Foundation licenses this file to you under the MIT license.
 
 using System;
 using System.Runtime.CompilerServices;
@@ -22,16 +22,16 @@ internal static class HttpCharacters
     private static bool[] InitializeAlphaNumeric()
     {
         // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
-        var alphaNumeric = new bool[TableSize];
-        for (var c = '0'; c <= '9'; c++)
+        bool[] alphaNumeric = new bool[TableSize];
+        for (char c = '0'; c <= '9'; c++)
         {
             alphaNumeric[c] = true;
         }
-        for (var c = 'A'; c <= 'Z'; c++)
+        for (char c = 'A'; c <= 'Z'; c++)
         {
             alphaNumeric[c] = true;
         }
-        for (var c = 'a'; c <= 'z'; c++)
+        for (char c = 'a'; c <= 'z'; c++)
         {
             alphaNumeric[c] = true;
         }
@@ -49,10 +49,11 @@ internal static class HttpCharacters
         // 127.0.0.1
         // user@host.com
         // user:password@host.com
-        var authority = new bool[TableSize];
+        bool[] authority = new bool[TableSize];
         Array.Copy(s_alphaNumeric, authority, TableSize);
         authority[':'] = true;
         authority['.'] = true;
+        authority['-'] = true;
         authority['['] = true;
         authority[']'] = true;
         authority['@'] = true;
@@ -62,7 +63,7 @@ internal static class HttpCharacters
     private static bool[] InitializeToken()
     {
         // tchar https://tools.ietf.org/html/rfc7230#appendix-B
-        var token = new bool[TableSize];
+        bool[] token = new bool[TableSize];
         Array.Copy(s_alphaNumeric, token, TableSize);
         token['!'] = true;
         token['#'] = true;
@@ -86,7 +87,7 @@ internal static class HttpCharacters
     {
         // Matches Http.Sys
         // Matches RFC 3986 except "*" / "+" / "," / ";" / "=" and "%" HEXDIG HEXDIG which are not allowed by Http.Sys
-        var host = new bool[TableSize];
+        bool[] host = new bool[TableSize];
         Array.Copy(s_alphaNumeric, host, TableSize);
         host['!'] = true;
         host['$'] = true;
@@ -104,8 +105,11 @@ internal static class HttpCharacters
     private static bool[] InitializeFieldValue()
     {
         // field-value https://tools.ietf.org/html/rfc7230#section-3.2
-        var fieldValue = new bool[TableSize];
-        for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
+        bool[] fieldValue = new bool[TableSize];
+
+        fieldValue[0x9] = true; // HTAB
+
+        for (int c = 0x20; c <= 0x7e; c++) // VCHAR and SP
         {
             fieldValue[c] = true;
         }
@@ -115,11 +119,11 @@ internal static class HttpCharacters
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ContainsInvalidAuthorityChar(Span<byte> s)
     {
-        var authority = s_authority;
+        bool[] authority = s_authority;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            byte c = s[i];
             if (c >= (uint)authority.Length || !authority[c])
             {
                 return true;
@@ -132,11 +136,11 @@ internal static class HttpCharacters
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidHostChar(string s)
     {
-        var host = s_host;
+        bool[] host = s_host;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c >= (uint)host.Length || !host[c])
             {
                 return i;
@@ -149,11 +153,11 @@ internal static class HttpCharacters
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidTokenChar(string s)
     {
-        var token = s_token;
+        bool[] token = s_token;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c >= (uint)token.Length || !token[c])
             {
                 return i;
@@ -166,11 +170,11 @@ internal static class HttpCharacters
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidTokenChar(ReadOnlySpan<byte> span)
     {
-        var token = s_token;
+        bool[] token = s_token;
 
-        for (var i = 0; i < span.Length; i++)
+        for (int i = 0; i < span.Length; i++)
         {
-            var c = span[i];
+            byte c = span[i];
             if (c >= (uint)token.Length || !token[c])
             {
                 return i;
@@ -180,15 +184,16 @@ internal static class HttpCharacters
         return -1;
     }
 
-    // Disallows control characters and anything more than 0x7E
+    // Follows field-value rules in https://tools.ietf.org/html/rfc7230#section-3.2
+    // Disallows characters > 0x7E.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidFieldValueChar(string s)
     {
-        var fieldValue = s_fieldValue;
+        bool[] fieldValue = s_fieldValue;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c >= (uint)fieldValue.Length || !fieldValue[c])
             {
                 return i;
@@ -198,15 +203,15 @@ internal static class HttpCharacters
         return -1;
     }
 
-    // Disallows control characters but allows extended characters > 0x7F
+    // Follows field-value rules for chars <= 0x7F. Allows extended characters > 0x7F.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidFieldValueCharExtended(string s)
     {
-        var fieldValue = s_fieldValue;
+        bool[] fieldValue = s_fieldValue;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c < (uint)fieldValue.Length && !fieldValue[c])
             {
                 return i;

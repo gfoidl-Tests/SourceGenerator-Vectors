@@ -93,7 +93,7 @@ namespace ConsoleApp2.Generator
 
             fixed (sbyte* mask = vector)
             {
-                foreach (char c in ":.[]@")
+                foreach (char c in ":.-[]@")
                 {
                     authority[c] = true;
                     SetBitInMask(mask, c);
@@ -162,7 +162,10 @@ namespace ConsoleApp2.Generator
 
             fixed (sbyte* mask = vector)
             {
-                for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
+                fieldValue[0x9] = true; // HTAB
+                SetBitInMask(mask, 0x9);
+
+                for (int c = 0x20; c <= 0x7e; c++) // VCHAR and SP
                 {
                     fieldValue[c] = true;
                     SetBitInMask(mask, c);

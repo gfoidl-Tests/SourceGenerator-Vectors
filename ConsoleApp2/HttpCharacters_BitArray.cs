@@ -4,32 +4,32 @@ using System.Runtime.CompilerServices;
 
 internal static class HttpCharacters_BitArray
 {
-    private const int _tableSize = 128;
-    private static readonly bool[] _alphaNumeric = InitializeAlphaNumeric();
-    private static readonly bool[] _authority = InitializeAuthority();
-    private static readonly bool[] _token = InitializeToken();
-    private static readonly BitArray _host = InitializeHost();
-    private static readonly bool[] _fieldValue = InitializeFieldValue();
+    private const int TableSize = 128;
+    private static readonly bool[] s_alphaNumeric = InitializeAlphaNumeric();
+    private static readonly bool[] s_authority = InitializeAuthority();
+    private static readonly bool[] s_token = InitializeToken();
+    private static readonly BitArray s_host = InitializeHost();
+    private static readonly bool[] s_fieldValue = InitializeFieldValue();
 
     internal static void Initialize()
     {
         // Access _alphaNumeric to initialize static fields
-        var initialize = _alphaNumeric;
+        _ = s_alphaNumeric;
     }
 
     private static bool[] InitializeAlphaNumeric()
     {
         // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
-        var alphaNumeric = new bool[_tableSize];
-        for (var c = '0'; c <= '9'; c++)
+        bool[] alphaNumeric = new bool[TableSize];
+        for (char c = '0'; c <= '9'; c++)
         {
             alphaNumeric[c] = true;
         }
-        for (var c = 'A'; c <= 'Z'; c++)
+        for (char c = 'A'; c <= 'Z'; c++)
         {
             alphaNumeric[c] = true;
         }
-        for (var c = 'a'; c <= 'z'; c++)
+        for (char c = 'a'; c <= 'z'; c++)
         {
             alphaNumeric[c] = true;
         }
@@ -47,10 +47,11 @@ internal static class HttpCharacters_BitArray
         // 127.0.0.1
         // user@host.com
         // user:password@host.com
-        var authority = new bool[_tableSize];
-        Array.Copy(_alphaNumeric, authority, _tableSize);
+        bool[] authority = new bool[TableSize];
+        Array.Copy(s_alphaNumeric, authority, TableSize);
         authority[':'] = true;
         authority['.'] = true;
+        authority['-'] = true;
         authority['['] = true;
         authority[']'] = true;
         authority['@'] = true;
@@ -60,8 +61,8 @@ internal static class HttpCharacters_BitArray
     private static bool[] InitializeToken()
     {
         // tchar https://tools.ietf.org/html/rfc7230#appendix-B
-        var token = new bool[_tableSize];
-        Array.Copy(_alphaNumeric, token, _tableSize);
+        bool[] token = new bool[TableSize];
+        Array.Copy(s_alphaNumeric, token, TableSize);
         token['!'] = true;
         token['#'] = true;
         token['$'] = true;
@@ -84,8 +85,8 @@ internal static class HttpCharacters_BitArray
     {
         // Matches Http.Sys
         // Matches RFC 3986 except "*" / "+" / "," / ";" / "=" and "%" HEXDIG HEXDIG which are not allowed by Http.Sys
-        var host = new bool[_tableSize];
-        Array.Copy(_alphaNumeric, host, _tableSize);
+        bool[] host = new bool[TableSize];
+        Array.Copy(s_alphaNumeric, host, TableSize);
         host['!'] = true;
         host['$'] = true;
         host['&'] = true;
@@ -102,8 +103,8 @@ internal static class HttpCharacters_BitArray
     private static bool[] InitializeFieldValue()
     {
         // field-value https://tools.ietf.org/html/rfc7230#section-3.2
-        var fieldValue = new bool[_tableSize];
-        for (var c = 0x20; c <= 0x7e; c++) // VCHAR and SP
+        bool[] fieldValue = new bool[TableSize];
+        for (int c = 0x20; c <= 0x7e; c++) // VCHAR and SP
         {
             fieldValue[c] = true;
         }
@@ -113,11 +114,11 @@ internal static class HttpCharacters_BitArray
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool ContainsInvalidAuthorityChar(Span<byte> s)
     {
-        var authority = _authority;
+        bool[] authority = s_authority;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            byte c = s[i];
             if (c >= (uint)authority.Length || !authority[c])
             {
                 return true;
@@ -130,11 +131,11 @@ internal static class HttpCharacters_BitArray
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidHostChar(string s)
     {
-        var host = _host;
+        BitArray host = s_host;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c >= (uint)host.Length || !host[c])
             {
                 return i;
@@ -147,11 +148,11 @@ internal static class HttpCharacters_BitArray
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidTokenChar(string s)
     {
-        var token = _token;
+        bool[] token = s_token;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c >= (uint)token.Length || !token[c])
             {
                 return i;
@@ -164,11 +165,11 @@ internal static class HttpCharacters_BitArray
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidTokenChar(ReadOnlySpan<byte> span)
     {
-        var token = _token;
+        bool[] token = s_token;
 
-        for (var i = 0; i < span.Length; i++)
+        for (int i = 0; i < span.Length; i++)
         {
-            var c = span[i];
+            byte c = span[i];
             if (c >= (uint)token.Length || !token[c])
             {
                 return i;
@@ -181,11 +182,11 @@ internal static class HttpCharacters_BitArray
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int IndexOfInvalidFieldValueChar(string s)
     {
-        var fieldValue = _fieldValue;
+        bool[] fieldValue = s_fieldValue;
 
-        for (var i = 0; i < s.Length; i++)
+        for (int i = 0; i < s.Length; i++)
         {
-            var c = s[i];
+            char c = s[i];
             if (c >= (uint)fieldValue.Length || !fieldValue[c])
             {
                 return i;
