@@ -1,0 +1,11 @@
+{
+    "profiles": {
+        "ConsoleApp2": {
+            "commandName": "Project",
+            "environmentVariables": {
+                "DOTNET_JitDisasm": "HttpCharacters_Vectorized:*"
+                //"DOTNET_JitDisasmSummary": "1"
+            }
+        }
+    }
+}

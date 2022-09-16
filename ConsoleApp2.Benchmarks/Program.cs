@@ -1,32 +1,24 @@
 ﻿using System.Text;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
+using BenchmarkDotNet.Running;
 
-Benchmarks bench = new()
-{
-    Length         = 15,
-    InvalidCharPos = InvalidCharPos.Mid
-};
-bench.Setup();
-Console.WriteLine(bench.ContainsInvalidAuthorityChar_Default());
-Console.WriteLine(bench.ContainsInvalidAuthorityChar_Vectorized());
+BenchmarkRunner.Run<Benchmarks>();
 
-#if !DEBUG
-BenchmarkDotNet.Running.BenchmarkRunner.Run<Benchmarks>();
-#endif
-
-[ShortRunJob]
+//[ShortRunJob]
 [CategoriesColumn]
 [GroupBenchmarksBy(BenchmarkLogicalGroupRule.ByCategory)]
 [HideColumns("Error", "StdDev", "Median", "RatioSD")]
+[MaxWarmupCount(10)]
+[MaxIterationCount(16)]
 public class Benchmarks
 {
     private const char Invalid = (char)1;
 
-    [Params(7, 8, 15, 16, 113)]
+    [Params(7, 15, 113)]
     public int Length { get; set; }
 
-    [Params(InvalidCharPos.None, InvalidCharPos.Start, InvalidCharPos.Mid, InvalidCharPos.End)]
+    [Params(InvalidCharPos.None, InvalidCharPos.Start, InvalidCharPos.End)]
     public InvalidCharPos InvalidCharPos { get; set; }
 
     private string? _value;

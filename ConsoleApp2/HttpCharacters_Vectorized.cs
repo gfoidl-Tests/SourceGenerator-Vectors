@@ -18,7 +18,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
     private static partial Vector128<sbyte> BitMaskLookupHost();
     private static partial Vector128<sbyte> BitMaskLookupFieldValue();
 
-    public static bool ContainsInvalidAuthorityChar(Span<byte> s)
+    public static bool ContainsInvalidAuthorityChar(ReadOnlySpan<byte> s)
     {
         int index = Vector128.IsHardwareAccelerated && s.Length >= Vector128<byte>.Count
             ? IndexOfInvalidCharVectorized(s, BitMaskLookupAuthority())
@@ -27,14 +27,14 @@ internal static unsafe partial class HttpCharacters_Vectorized
         return index >= 0;
     }
 
-    public static int IndexOfInvalidHostChar(string s)
+    public static int IndexOfInvalidHostChar(ReadOnlySpan<char> s)
     {
         return Vector128.IsHardwareAccelerated && s.Length >= Vector128<short>.Count
             ? IndexOfInvalidCharVectorized(s, BitMaskLookupHost())
             : IndexOfInvalidCharScalar    (s, LookupHost());
     }
 
-    public static int IndexOfInvalidTokenChar(string s)
+    public static int IndexOfInvalidTokenChar(ReadOnlySpan<char> s)
     {
         return Vector128.IsHardwareAccelerated && s.Length >= Vector128<short>.Count
             ? IndexOfInvalidCharVectorized(s, BitMaskLookupToken())
@@ -50,7 +50,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
 
     // Follows field-value rules in https://tools.ietf.org/html/rfc7230#section-3.2
     // Disallows characters > 0x7E.
-    public static int IndexOfInvalidFieldValueChar(string s)
+    public static int IndexOfInvalidFieldValueChar(ReadOnlySpan<char> s)
     {
         return Vector128.IsHardwareAccelerated && s.Length >= Vector128<short>.Count
             ? IndexOfInvalidCharVectorized(s, BitMaskLookupFieldValue())
@@ -58,13 +58,14 @@ internal static unsafe partial class HttpCharacters_Vectorized
     }
 
     // Follows field-value rules for chars <= 0x7F. Allows extended characters > 0x7F.
-    public static int IndexOfInvalidFieldValueCharExtended(string s)
+    public static int IndexOfInvalidFieldValueCharExtended(ReadOnlySpan<char> s)
     {
         return Vector128.IsHardwareAccelerated && s.Length >= Vector128<short>.Count
             ? IndexOfInvalidCharExtendedVectorized(s, BitMaskLookupFieldValue())
             : IndexOfInvalidCharExtendedScalar    (s, LookupFieldValue());
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharScalar(ReadOnlySpan<byte> value, ReadOnlySpan<bool> lookup)
     {
         for (int i = 0; i < value.Length; ++i)
@@ -80,6 +81,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         return -1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharScalar(ReadOnlySpan<char> value, ReadOnlySpan<bool> lookup)
     {
         for (int i = 0; i < value.Length; ++i)
@@ -95,6 +97,7 @@ internal static unsafe partial class HttpCharacters_Vectorized
         return -1;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int IndexOfInvalidCharExtendedScalar(ReadOnlySpan<char> value, ReadOnlySpan<bool> lookup)
     {
         for (int i = 0; i < value.Length; ++i)
