@@ -21,6 +21,7 @@
 
     <ItemGroup>
         <InternalsVisibleTo Include="ConsoleApp2.Tests" />
+        <InternalsVisibleTo Include="ConsoleApp2.Benchmarks" />
     </ItemGroup>
 
 </Project>

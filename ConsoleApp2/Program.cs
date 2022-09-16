@@ -50,13 +50,13 @@ public class Bench
     }
 
     //[Benchmark(Baseline = true)]
-    public int Default() => HttpCharacters.IndexOfInvalidFieldValueCharExtended(this.Token);
+    public int Default() => HttpCharacters.IndexOfInvalidHostChar(this.Token);
 
     //[Benchmark]
     public int BitArrayBased() => HttpCharacters_BitArray.IndexOfInvalidHostChar(this.Token);
 
     [Benchmark]
-    public int Vectorized() => HttpCharacters_Vectorized.IndexOfInvalidFieldValueCharExtended(this.Token);
+    public int Vectorized() => HttpCharacters_Vectorized.IndexOfInvalidHostChar(this.Token);
 }
 
 [ShortRunJob]
