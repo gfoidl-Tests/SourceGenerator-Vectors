@@ -26,10 +26,10 @@ namespace ConsoleApp2.Generator
         static HttpCharactersGenerator()
         {
             (s_alphaNumeric, s_bitMaskLookupAlphaNumeric) = InitializeAlphaNumeric();
-            (s_authority, s_bitMaskLookupAuthority) = InitializeAuthority();
-            (s_token, s_bitMaskLookupToken) = InitializeToken();
-            (s_host, s_bitMaskLookupHost) = InitializeHost();
-            (s_fieldValue, s_bitMaskLookupFieldValue) = InitializeFieldValue();
+            (s_authority   , s_bitMaskLookupAuthority)    = InitializeAuthority();
+            (s_token       , s_bitMaskLookupToken)        = InitializeToken();
+            (s_host        , s_bitMaskLookupHost)         = InitializeHost();
+            (s_fieldValue  , s_bitMaskLookupFieldValue)   = InitializeFieldValue();
         }
         //---------------------------------------------------------------------
         private static void SetBitInMask(sbyte* mask, int c)
@@ -47,7 +47,7 @@ namespace ConsoleApp2.Generator
             // ALPHA and DIGIT https://tools.ietf.org/html/rfc5234#appendix-B.1
 
             bool[] alphaNumeric = new bool[TableSize];
-            sbyte[] vector = new sbyte[128 / 8];
+            sbyte[] vector      = new sbyte[128 / 8];
 
             for (int i = 0; i < vector.Length; ++i)
             {
@@ -153,7 +153,7 @@ namespace ConsoleApp2.Generator
             // field-value https://tools.ietf.org/html/rfc7230#section-3.2
 
             bool[] fieldValue = new bool[TableSize];
-            sbyte[] vector = new sbyte[128 / 8];
+            sbyte[] vector    = new sbyte[128 / 8];
 
             for (int i = 0; i < vector.Length; ++i)
             {
@@ -194,11 +194,10 @@ internal static partial class HttpCharacters_Vectorized
     private static class Constants
     {");
 
-            EmitConstant(builder, "LookupAlphaNumeric", s_alphaNumeric);
-            EmitConstant(builder, "LookupAuthority", s_authority);
-            EmitConstant(builder, "LookupToken", s_token);
-            EmitConstant(builder, "LookupHost", s_host);
-            EmitConstant(builder, "LookupFieldValue", s_fieldValue);
+            EmitConstant(builder, "LookupAuthority"   , s_authority);
+            EmitConstant(builder, "LookupToken"       , s_token);
+            EmitConstant(builder, "LookupHost"        , s_host);
+            EmitConstant(builder, "LookupFieldValue"  , s_fieldValue);
 
             builder.Append(@"
     }
@@ -208,7 +207,6 @@ internal static partial class HttpCharacters_Vectorized
     // This is tracked in https://github.com/dotnet/runtime/issues/12241
 ");
 
-            EmitLookup(builder, "LookupAlphaNumeric");
             EmitLookup(builder, "LookupAuthority");
             EmitLookup(builder, "LookupToken");
             EmitLookup(builder, "LookupHost");
@@ -216,10 +214,9 @@ internal static partial class HttpCharacters_Vectorized
 
             builder.AppendLine();
 
-            EmitVector(builder, "BitmaskAlphaNumeric", s_bitMaskLookupAlphaNumeric);
-            EmitVector(builder, "BitMaskLookupAuthority", s_bitMaskLookupAuthority);
-            EmitVector(builder, "BitMaskLookupToken", s_bitMaskLookupToken);
-            EmitVector(builder, "BitMaskLookupHost", s_bitMaskLookupHost);
+            EmitVector(builder, "BitMaskLookupAuthority" , s_bitMaskLookupAuthority);
+            EmitVector(builder, "BitMaskLookupToken"     , s_bitMaskLookupToken);
+            EmitVector(builder, "BitMaskLookupHost"      , s_bitMaskLookupHost);
             EmitVector(builder, "BitMaskLookupFieldValue", s_bitMaskLookupFieldValue);
 
             builder.Append(@"
@@ -232,7 +229,7 @@ internal static partial class HttpCharacters_Vectorized
         private void EmitConstant(StringBuilder builder, string name, bool[] lookup)
         {
             builder.Append($@"
-        public static ReadOnlySpan<bool> {name} => new bool[] {{ /* The first value is a dummy to workaround a JIT limitation */ false, ");
+        public static ReadOnlySpan<bool> {name} => new bool[] {{ ");
 
             for (int i = 0; i < lookup.Length; ++i)
             {
@@ -250,7 +247,7 @@ internal static partial class HttpCharacters_Vectorized
         private void EmitLookup(StringBuilder builder, string name)
         {
             builder.Append($@"
-    private static partial ReadOnlySpan<bool> {name}() => Constants.{name}.Slice(1);");
+    private static partial ReadOnlySpan<bool> {name}() => Constants.{name}.Slice(0);");
         }
         //---------------------------------------------------------------------
         private void EmitVector(StringBuilder builder, string name, sbyte[] mask)
