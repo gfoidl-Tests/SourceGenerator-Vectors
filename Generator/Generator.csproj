@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <LangVersion>preview</LangVersion>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <IsRoslynComponent>true</IsRoslynComponent>
+        <!--<GeneratePackageOnBuild>true</GeneratePackageOnBuild>-->
+        <IncludeBuildOutput>false</IncludeBuildOutput>
+        <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_AddAnalyzersToOutput</TargetsForTfmSpecificContentInPackage>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Workspaces" Version="4.1.0" PrivateAssets="all" />
+        <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.3" PrivateAssets="all" />
+    </ItemGroup>
+
+    <Target Name="_AddAnalyzersToOutput">
+        <ItemGroup>
+            <TfmSpecificPackageFile Include="$(OutputPath)\$(AssemblyName).dll" PackagePath="analyzers/dotnet/cs" />
+        </ItemGroup>
+    </Target>
+
+</Project>
