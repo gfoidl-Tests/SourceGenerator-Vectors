@@ -19,6 +19,12 @@
         <PackageReference Include="Microsoft.CodeAnalysis.Analyzers" Version="3.3.3" PrivateAssets="all" />
     </ItemGroup>
 
+    <ItemGroup>
+        <!-- https://github.com/dotnet/roslyn/blob/main/docs/features/source-generators.cookbook.md#consume-msbuild-properties-and-metadata -->
+        <!-- Visible="false" in the cookbook -->
+        <None Include="Generator.props" Pack="true" PackagePath="build" Visible="true" />
+    </ItemGroup>
+
     <Target Name="_AddAnalyzersToOutput">
         <ItemGroup>
             <TfmSpecificPackageFile Include="$(OutputPath)\$(AssemblyName).dll" PackagePath="analyzers/dotnet/cs" />

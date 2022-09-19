@@ -1,16 +1,20 @@
 // (c) gfoidl, all rights reserved
 
 using System.CodeDom.Compiler;
+using Generator.Models;
 
 namespace Generator.Emitter;
 
 internal static class HelpersEmitter
 {
-    public static void EmitHelpers(IndentedTextWriter writer)
+    public static void EmitHelpers(IndentedTextWriter writer, EmitterOptions emitterOptions)
     {
         writer.WriteLine();
 
-        writer.WriteLine("[DebuggerNonUserCode]");
+        if (!emitterOptions.GeneratedIndexOfAnyDebuggerHiddenDisabled)
+        {
+            writer.WriteLine("[DebuggerNonUserCode]");
+        }
 
         // TODO: should be 'file class' but somehow this results in
         // "CS0116: A namespace cannot directly contain members such as fields, methods or statements"

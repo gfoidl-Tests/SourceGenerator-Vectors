@@ -27,7 +27,11 @@ internal class IndexOfAnyEmitter
         "CS0219  // The variable '...' is assigned but its value is never used"
     };
     //-------------------------------------------------------------------------
+    private readonly EmitterOptions _emitterOptions;
+
     private bool _needToEmitVectorHelpers = false;
+    //-------------------------------------------------------------------------
+    public IndexOfAnyEmitter(EmitterOptions emitterOptions) => _emitterOptions = emitterOptions;
     //-------------------------------------------------------------------------
     public void Emit(SourceProductionContext context, ImmutableArray<IndexOfAnyMethod> methods)
     {
@@ -48,7 +52,7 @@ internal class IndexOfAnyEmitter
 
         if (_needToEmitVectorHelpers)
         {
-            HelpersEmitter.EmitHelpers(writer);
+            HelpersEmitter.EmitHelpers(writer, _emitterOptions);
         }
 
         EmitWarningPragmas(writer, disable: false);
@@ -103,7 +107,10 @@ internal class IndexOfAnyEmitter
             writer.Indent++;
         }
 
-        writer.WriteLine("[DebuggerNonUserCode]");
+        if (!_emitterOptions.GeneratedIndexOfAnyDebuggerHiddenDisabled)
+        {
+            writer.WriteLine("[DebuggerNonUserCode]");
+        }
         writer.Write($"partial {typeInfo.TypeKind} ");
         writer.WriteLine($"{typeInfo.Name}");
         writer.WriteLine("{");

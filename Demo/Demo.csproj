@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -17,5 +17,12 @@
                           OutputItemType         ="Analyzer"
                           ReferenceOutputAssembly="false" />
     </ItemGroup>
+
+    <!-- Not needed when imported via NuGet -->
+    <Import Project="..\Generator\Generator.props" />
+
+    <PropertyGroup>
+        <GeneratedIndexOfAnyDebuggerHiddenDisabled>true</GeneratedIndexOfAnyDebuggerHiddenDisabled>
+    </PropertyGroup>
 
 </Project>

@@ -1,0 +1,8 @@
+<Project>
+
+    <!-- https://github.com/dotnet/roslyn/blob/main/docs/features/source-generators.cookbook.md#consume-msbuild-properties-and-metadata -->
+    <ItemGroup>
+        <CompilerVisibleProperty Include="GeneratedIndexOfAnyDebuggerHiddenDisabled" />
+    </ItemGroup>
+
+</Project>

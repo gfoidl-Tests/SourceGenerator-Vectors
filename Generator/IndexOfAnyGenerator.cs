@@ -13,6 +13,9 @@ namespace Generator;
 public partial class IndexOfAnyGenerator : IIncrementalGenerator
 {
     internal const string GeneratedIndexOfAnyAttributeName = "GeneratedIndexOfAnyAttribute";
+
+    // Name is lowercased
+    private const string GeneratedIndexOfAnyDebuggerHiddenDisabledMetadata = "build_property.generatedindexofanydebuggerhiddendisabled";
     //-------------------------------------------------------------------------
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
@@ -49,12 +52,27 @@ public partial class IndexOfAnyGenerator : IIncrementalGenerator
         IncrementalValueProvider<(bool AllowUnsafe, string? AssemblyName)> compilationData = context.CompilationProvider
             .Select(static (c, _) => (c.Options is CSharpCompilationOptions { AllowUnsafe: true }, c.AssemblyName));
 
-        var combined = codeOrDiagnostics.Combine(compilationData);
+        IncrementalValueProvider<EmitterOptions> configOptionsData = context.AnalyzerConfigOptionsProvider
+            .Select((options, _) =>
+            {
+                bool generatedIndexOfAnyDebuggerHiddenDisabled = false;
+                if (options.GlobalOptions.TryGetValue(GeneratedIndexOfAnyDebuggerHiddenDisabledMetadata, out string? value))
+                {
+                    generatedIndexOfAnyDebuggerHiddenDisabled = value.Equals("true", StringComparison.OrdinalIgnoreCase);
+                }
+
+                return new EmitterOptions(generatedIndexOfAnyDebuggerHiddenDisabled);
+            });
+
+        var combined = codeOrDiagnostics
+            .Combine(compilationData)
+            .Combine(configOptionsData);
 
         context.RegisterSourceOutput(combined, static (context, compilationData) =>
         {
-            ImmutableArray<object?> results = compilationData.Left;
-            var (allowUnsafe, assemblyName) = compilationData.Right;
+            ImmutableArray<object?> results = compilationData.Left.Left;
+            var (allowUnsafe, assemblyName) = compilationData.Left.Right;
+            EmitterOptions emitterOptions   = compilationData.Right;
 
             bool allFailures                                 = true;
             ImmutableArray<IndexOfAnyMethod>.Builder builder = ImmutableArray.CreateBuilder<IndexOfAnyMethod>();
@@ -83,7 +101,7 @@ public partial class IndexOfAnyGenerator : IIncrementalGenerator
             }
 
             ImmutableArray<IndexOfAnyMethod> indexOfAnyMethods = builder.ToImmutableArray();
-            IndexOfAnyEmitter emitter                          = new();
+            IndexOfAnyEmitter emitter                          = new(emitterOptions);
 
             emitter.Emit(context, indexOfAnyMethods);
         });
