@@ -28,40 +28,27 @@ internal class IndexOfAnyEmitter
     {
         //System.Diagnostics.Debugger.Launch();
 
-        StringBuilder buffer = new();
+        StringBuilder buffer            = new();
+        using StringWriter sw           = new(buffer);
+        using IndentedTextWriter writer = new(sw);
+
+        EmitPrologue(writer);
 
         IEnumerable<IGrouping<ContainingTypeInfo, MethodInfo>> methodGroups = methods.GroupBy(m => m.Type, m => m.Method);
         foreach (IGrouping<ContainingTypeInfo, MethodInfo> methodGroup in methodGroups)
         {
             ContainingTypeInfo containingType = methodGroup.Key;
-            string code                       = this.GenerateCode(containingType, methodGroup.ToArray(), buffer);
-            string fileName                   = GetFilename(containingType, buffer);
-
-            context.AddSource(fileName, code);
+            GenerateCode(containingType, methodGroup.ToArray(), writer);
         }
+
+        EmitWarningPragmas(writer, disable: false);
+
+        string code = sw.ToString();
+        context.AddSource($"{IndexOfAnyGenerator.GeneratedIndexOfAnyAttributeName.Replace("Attribute", "Methods")}.g.cs", code);
     }
     //-------------------------------------------------------------------------
-    private static string GetFilename(ContainingTypeInfo typeInfo, StringBuilder buffer)
+    private static void EmitPrologue(IndentedTextWriter writer)
     {
-        buffer.Clear();
-
-        if (typeInfo.Namespace is { } ns)
-        {
-            buffer.Append(ns.Replace('.', '_'));
-            buffer.Append('_');
-        }
-        buffer.Append(typeInfo.Name);
-        buffer.Append("_GeneratedIndexOfAny.g.cs");
-
-        return buffer.ToString();
-    }
-    //-------------------------------------------------------------------------
-    private string GenerateCode(ContainingTypeInfo typeInfo, MethodInfo[] methods, StringBuilder buffer)
-    {
-        buffer.Clear();
-        using StringWriter sw           = new(buffer);
-        using IndentedTextWriter writer = new(sw);
-
         foreach (string header in Globals.Headers)
         {
             writer.WriteLine(header);
@@ -69,12 +56,17 @@ internal class IndexOfAnyEmitter
 
         EmitWarningPragmas(writer, disable: true);
         EmitNamespaces(writer);
+    }
+    //-------------------------------------------------------------------------
+    private static void GenerateCode(ContainingTypeInfo typeInfo, MethodInfo[] methods, IndentedTextWriter writer)
+    {
         writer.WriteLine();
 
         if (typeInfo.Namespace is not null)
         {
-            writer.WriteLine($"namespace {typeInfo.Namespace};");
-            writer.WriteLine();
+            writer.WriteLine($"namespace {typeInfo.Namespace}");
+            writer.WriteLine("{");
+            writer.Indent++;
         }
 
         writer.Write($"partial {typeInfo.TypeKind} ");
@@ -84,7 +76,7 @@ internal class IndexOfAnyEmitter
 
         for (int i = 0; i < methods.Length; ++i)
         {
-            this.EmitMethod(writer, methods[i]);
+            EmitMethod(writer, methods[i]);
 
             if (i < methods.Length - 1)
             {
@@ -95,16 +87,10 @@ internal class IndexOfAnyEmitter
         writer.Indent--;
         writer.WriteLine("}");
 
-        EmitWarningPragmas(writer, disable: false);
-
-        return sw.ToString();
-    }
-    //-------------------------------------------------------------------------
-    private static void EmitNamespaces(IndentedTextWriter writer)
-    {
-        foreach (string ns in (IEnumerable<string>)s_namespaces)
+        if (typeInfo.Namespace is not null)
         {
-            writer.WriteLine($"using {ns};");
+            writer.Indent--;
+            writer.WriteLine("}");
         }
     }
     //-------------------------------------------------------------------------
@@ -124,7 +110,15 @@ internal class IndexOfAnyEmitter
         }
     }
     //-------------------------------------------------------------------------
-    private void EmitMethod(IndentedTextWriter writer, MethodInfo methodInfo)
+    private static void EmitNamespaces(IndentedTextWriter writer)
+    {
+        foreach (string ns in (IEnumerable<string>)s_namespaces)
+        {
+            writer.WriteLine($"using {ns};");
+        }
+    }
+    //-------------------------------------------------------------------------
+    private static void EmitMethod(IndentedTextWriter writer, MethodInfo methodInfo)
     {
         writer.WriteLine($"[{Globals.GeneratedCodeAttribute}]");
         writer.WriteLine("[EditorBrowsable(EditorBrowsableState.Never)]");
