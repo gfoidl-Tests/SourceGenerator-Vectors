@@ -43,9 +43,10 @@ internal static class HelpersEmitter
                 {
                     for (int i = 0; i < value.Length; ++i)
                     {
-                        char c = value[i];
+                        char c     = value[i];
+                        bool match = TNegator.NegateIfNeeded(lookup[c]);
 
-                        if (c >= lookup.Length || TNegator.NegateIfNeeded(lookup[c]))
+                        if (match)
                         {
                             return i;
                         }

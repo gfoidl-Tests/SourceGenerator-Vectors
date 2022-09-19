@@ -16,13 +16,17 @@ internal sealed unsafe class VectorizedMethodBodyEmitter : MethodBodyEmitter
         writer.WriteLine();
 
         string valueParameterName = _methodInfo.Parameters[0].Name;
-        string negator            = _methodInfo.IndexOfAnyOptions.FindAnyExcept ? "Negate" : "DontNegate";
+        string negatorVectorized  = _methodInfo.IndexOfAnyOptions.FindAnyExcept ? "DontNegate" : "Negate";
+        string negatorScalar      = _methodInfo.IndexOfAnyOptions.FindAnyExcept ? "Negate"     : "DontNegate";
 
-        writer.WriteLine($"""
-            return Vector128.IsHardwareAccelerated && {valueParameterName}.Length >= Vector128<short>.Count
-                            ? Core.IndexOfMatchCharVectorized<Core.{negator}>({valueParameterName}, mask)
-                            : Core.IndexOfMatchCharScalar<Core.{negator}>({valueParameterName}, lookup);
-            """);
+        writer.WriteLine($"return Vector128.IsHardwareAccelerated && {valueParameterName}.Length >= Vector128<short>.Count");
+        writer.Indent++;
+        {
+            writer.WriteLine($"? Core.IndexOfMatchCharVectorized<Core.{negatorVectorized}>({valueParameterName}, mask)");
+            writer.WriteLine($": Core.IndexOfMatchCharScalar<Core.{negatorScalar}>({valueParameterName}, lookup);");
+        }
+        writer.Indent--;
+
         return true;
     }
     //-------------------------------------------------------------------------

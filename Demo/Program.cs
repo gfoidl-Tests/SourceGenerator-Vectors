@@ -2,16 +2,15 @@
 
 using Demo.Internal;
 
-string s = "abcdefgh8ijklmnopqrstuv3wxyz";
-ReadOnlySpan<char> span = s;
+ReadOnlySpan<char> span = "abcdefgh8ijklmnopqrstuv3wxyz";
 
 Console.WriteLine($"{span.IndexOfAny("1234567890")} expected: 8");
 Console.WriteLine($"{Demo1.FirstIndexOfNumber(span)} expected: 8");
 Console.WriteLine($"{Demo1.FirstIndexOfSet0(span)} expected: 3");
 Console.WriteLine(Demo1.FirstIndexOfNonAsciiSet(span));
 
-Console.WriteLine(Demo2.FirstIndexOfNotNumber(span));
-Console.WriteLine($"{Demo2.FirstIndexOfNotNumber1(span)} expected: 7"); 
+Console.WriteLine(Demo2.FirstIndexOfNotSet0(span));
+Console.WriteLine($"{Demo2.FirstIndexOfNotSet1(span)} expected: 6");
 
 internal static partial class Demo1
 {
@@ -30,9 +29,9 @@ namespace Demo.Internal
     internal static partial class Demo2
     {
         [GeneratedIndexOfAny("abcd", FindAnyExcept = true)]
-        public static partial int FirstIndexOfNotNumber(ReadOnlySpan<char> value);
+        public static partial int FirstIndexOfNotSet0(ReadOnlySpan<char> value);
 
         [GeneratedIndexOfAny("abcdef", FindAnyExcept = true)]
-        public static partial int FirstIndexOfNotNumber1(ReadOnlySpan<char> value);
+        public static partial int FirstIndexOfNotSet1(ReadOnlySpan<char> value);
     }
 }
