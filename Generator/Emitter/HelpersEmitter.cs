@@ -10,10 +10,12 @@ internal static class HelpersEmitter
     {
         writer.WriteLine();
 
+        writer.WriteLine("[DebuggerNonUserCode]");
+
         // TODO: should be 'file class' but somehow this results in
         // "CS0116: A namespace cannot directly contain members such as fields, methods or statements"
         //writer.WriteLine("file class VectorHelper");
-        writer.WriteLine("/* file */ class Core");
+        writer.WriteLine("/* file */ internal class Core");
         writer.WriteLine("{");
         writer.Indent++;
         {
@@ -32,13 +34,14 @@ internal static class HelpersEmitter
         // TODO: I don't know why that indentation is needed, but outupt shows it's OK so.
         const string Code = """
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                private static int IndexOfMatchCharScalar(ReadOnlySpan<char> value, ReadOnlySpan<bool> lookup)
+                public static int IndexOfMatchCharScalar<TNegator>(ReadOnlySpan<char> value, ReadOnlySpan<bool> lookup)
+                    where TNegator : struct, INegator
                 {
                     for (int i = 0; i < value.Length; ++i)
                     {
                         char c = value[i];
 
-                        if (c >= lookup.Length || !lookup[c])
+                        if (c >= lookup.Length || TNegator.NegateIfNeeded(!lookup[c]))
                         {
                             return i;
                         }
@@ -55,7 +58,8 @@ internal static class HelpersEmitter
     {
         // TODO: I don't know why that indentation is needed, but outupt shows it's OK so.
         const string Code = """
-            private static int IndexOfMatchCharVectorized(ReadOnlySpan<char> value, Vector128<sbyte> bitMaskLookup)
+            public static int IndexOfMatchCharVectorized<TNegator>(ReadOnlySpan<char> value, Vector128<sbyte> bitMaskLookup)
+                    where TNegator : struct, INegator
                 {
                     Debug.Assert(Vector128.IsHardwareAccelerated);
                     Debug.Assert(value.Length >= Vector128<short>.Count);
@@ -91,7 +95,7 @@ internal static class HelpersEmitter
                             Vector128<short> source1 = Vector128.LoadUnsafe(ref ptr, idx + 8);
                             Vector128<sbyte> values  = NarrowWithSaturation(source0, source1);
 
-                            mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
+                            mask = CreateEscapingMask<TNegator>(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
                             if (mask != 0)
                             {
                                 goto Found;
@@ -108,7 +112,7 @@ internal static class HelpersEmitter
                         Vector128<short> source = Vector128.LoadUnsafe(ref ptr, idx);
                         Vector128<sbyte> values = NarrowWithSaturation(source, source);
 
-                        mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
+                        mask = CreateEscapingMask<TNegator>(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
                         if (mask != 0)
                         {
                             goto Found;
@@ -127,7 +131,7 @@ internal static class HelpersEmitter
                         Vector128<short> source = Vector128.LoadUnsafe(ref ptr, idx + remaining);
                         Vector128<sbyte> values = NarrowWithSaturation(source, source);
 
-                        mask = CreateEscapingMask(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
+                        mask = CreateEscapingMask<TNegator>(values, bitMaskLookup, bitPosLookup, nibbleMaskSByte, zeroMaskSByte);
                         if (mask != 0)
                         {
                             idx += remaining;
@@ -158,12 +162,13 @@ internal static class HelpersEmitter
                 }
 
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
-                private static uint CreateEscapingMask(
+                private static uint CreateEscapingMask<TNegator>(
                     Vector128<sbyte> values,
                     Vector128<sbyte> bitMaskLookup,
                     Vector128<sbyte> bitPosLookup,
                     Vector128<sbyte> nibbleMaskSByte,
                     Vector128<sbyte> nullMaskSByte)
+                    where TNegator : struct, INegator
                 {
                     // To check if an input byte matches or not, we use a bitmask-lookup.
                     // Therefore we split the input byte into the low- and high-nibble, which will get
@@ -209,6 +214,7 @@ internal static class HelpersEmitter
 
                     Vector128<sbyte> mask       = bitPositions & bitMask;
                     Vector128<sbyte> comparison = Vector128.Equals(nullMaskSByte, mask);
+                    comparison                  = TNegator.NegateIfNeeded(comparison);
 
                     return comparison.ExtractMostSignificantBits();
                 }
@@ -250,6 +256,24 @@ internal static class HelpersEmitter
                     return Sse3.IsSupported
                         ? Ssse3.Shuffle(vector, indices)
                         : Vector128.Shuffle(vector, indices);
+                }
+
+                public interface INegator
+                {
+                    static abstract bool NegateIfNeeded(bool equals);
+                    static abstract Vector128<sbyte> NegateIfNeeded(Vector128<sbyte> equals);
+                }
+
+                public struct DontNegate : INegator
+                {
+                    public static bool NegateIfNeeded(bool equals) => equals;
+                    public static Vector128<sbyte> NegateIfNeeded(Vector128<sbyte> equals) => equals;
+                }
+
+                public struct Negate : INegator
+                {
+                    public static bool NegateIfNeeded(bool equals) => !equals;
+                    public static Vector128<sbyte> NegateIfNeeded(Vector128<sbyte> equals) => ~equals;
                 }
             """;
 

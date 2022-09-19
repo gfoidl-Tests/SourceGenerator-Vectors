@@ -103,6 +103,7 @@ internal class IndexOfAnyEmitter
             writer.Indent++;
         }
 
+        writer.WriteLine("[DebuggerNonUserCode]");
         writer.Write($"partial {typeInfo.TypeKind} ");
         writer.WriteLine($"{typeInfo.Name}");
         writer.WriteLine("{");
@@ -132,7 +133,6 @@ internal class IndexOfAnyEmitter
     {
         writer.WriteLine($"[{Globals.GeneratedCodeAttribute}]");
         writer.WriteLine("[EditorBrowsable(EditorBrowsableState.Never)]");
-        writer.WriteLine("[DebuggerNonUserCode]");
 
         writer.Write(AccessibilityText(methodInfo.Accessibility));
         if (methodInfo.IsStatic)
