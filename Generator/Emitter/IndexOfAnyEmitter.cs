@@ -110,6 +110,11 @@ internal class IndexOfAnyEmitter
         for (int i = 0; i < methods.Length; ++i)
         {
             this.EmitMethod(writer, methods[i]);
+
+            if (i < methods.Length - 1)
+            {
+                writer.WriteLine();
+            }
         }
 
         writer.Indent--;
@@ -162,7 +167,7 @@ internal class IndexOfAnyEmitter
     //-------------------------------------------------------------------------
     private void EmitMethodBody(IndentedTextWriter writer, MethodInfo methodInfo)
     {
-        MethodBodyEmitter bodyEmitter = MethodBodyEmitter.Create(methodInfo);
+        MethodBodyEmitter bodyEmitter = MethodBodyEmitter.Create(methodInfo, writer);
         _needToEmitVectorHelpers |= bodyEmitter.Emit(writer);
     }
     //-------------------------------------------------------------------------

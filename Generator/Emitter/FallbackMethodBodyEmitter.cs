@@ -11,7 +11,15 @@ internal sealed class FallbackMethodBodyEmitter : MethodBodyEmitter
     //-------------------------------------------------------------------------
     public override bool Emit(IndentedTextWriter writer)
     {
-        writer.WriteLine($"""return value.IndexOfAny("{_methodInfo.IndexOfAnyOptions.SetChars}");""");
+        string fallbackMethod = this.GetFallbackMethod();
+        writer.WriteLine($"""return value.{fallbackMethod}("{_methodInfo.IndexOfAnyOptions.SetChars}");""");
         return false;
+    }
+    //-------------------------------------------------------------------------
+    private string GetFallbackMethod()
+    {
+        return _methodInfo.IndexOfAnyOptions.FindAnyExcept
+            ? "IndexOfAnyExcept"
+            : "IndexOfAny";
     }
 }
