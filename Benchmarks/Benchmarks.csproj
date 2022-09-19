@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
@@ -8,14 +8,8 @@
         <LangVersion>preview</LangVersion>
     </PropertyGroup>
 
-    <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-        <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
-    </PropertyGroup>
-
     <ItemGroup>
-        <ProjectReference Include                ="..\Generator\Generator.csproj"
-                          OutputItemType         ="Analyzer"
-                          ReferenceOutputAssembly="false" />
+        <ProjectReference Include="..\StrippedCoreLib\StrippedCoreLib.csproj" />
     </ItemGroup>
 
     <ItemGroup>

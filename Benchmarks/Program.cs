@@ -1,6 +1,7 @@
 // (c) gfoidl, all rights reserved
 
 using BenchmarkDotNet.Attributes;
+using StrippedCoreLib;
 
 Bench bench = new();
 Console.WriteLine(bench.Authority);
@@ -17,6 +18,8 @@ public partial class Bench
     private const string AuthoritySpecific   = ":.-[]@";
     private const string ValidAuthorityChars = AlphaNumeric + AuthoritySpecific;
 
+    private static readonly MemoryExtensions1.IndexOfAnyInitData s_authorityInitData = MemoryExtensions1.IndexOfAnyInitialize(ValidAuthorityChars);
+
     [Params("hostname:8080", "www.thelongestdomainnameintheworldandthensomeandthensomemoreandmore.com")]
     public string Authority { get; set; } = "hostname:8080";
 
@@ -24,8 +27,5 @@ public partial class Bench
     public bool IsValidByIndexOfAnyExcept() => this.Authority.AsSpan().IndexOfAnyExcept(ValidAuthorityChars) < 0;
 
     [Benchmark]
-    public bool IsValidByGeneratedIndexOfAnyExcept() => IsAuthorityValid(this.Authority) < 0;
-
-    [GeneratedIndexOfAny(ValidAuthorityChars, FindAnyExcept = true)]
-    private static partial int IsAuthorityValid(ReadOnlySpan<char> host);
+    public bool IsValidByGeneratedIndexOfAnyExcept() => this.Authority.AsSpan().IndexOfAnyExcept(ValidAuthorityChars, s_authorityInitData) < 0;
 }
