@@ -38,13 +38,13 @@ public partial class IndexOfAnyGenerator
         if (!IsMethodDeclarationPartial(methodSymbol))                                        return null;
         if (!ReturnsInt32(methodSymbol))                                                      return null;
 
-        object? argumentTupleOrDiagnostic = GetIndexOfAnyAttributeOrDiagnostic(methodSymbol, methodDeclarationSyntax);
+        object? argumentTupleOrDiagnostic = GetIndexOfAnyOptionsOrDiagnostic(methodSymbol, methodDeclarationSyntax);
 
-        if (argumentTupleOrDiagnostic is Tuple<string, bool> methodArguments)
+        if (argumentTupleOrDiagnostic is IndexOfAnyOptions options)
         {
-            if (ValidateSetChars(methodArguments.Item1, methodSymbol, methodDeclarationSyntax, out Diagnostic? diagnostic))
+            if (ValidateSetChars(options.SetChars, methodSymbol, methodDeclarationSyntax, out Diagnostic? diagnostic))
             {
-                return IndexOfAnyMethod.Create(methodSymbol, methodArguments.Item1, methodArguments.Item2);
+                return IndexOfAnyMethod.Create(methodSymbol, options);
             }
 
             argumentTupleOrDiagnostic = diagnostic;
@@ -60,7 +60,7 @@ public partial class IndexOfAnyGenerator
     private static bool ReturnsInt32(IMethodSymbol methodSymbol)
         => methodSymbol.ReturnType?.SpecialType == SpecialType.System_Int32;
     //-------------------------------------------------------------------------
-    private static object? GetIndexOfAnyAttributeOrDiagnostic(IMethodSymbol methodSymbol, CSharpSyntaxNode syntaxNode)
+    private static object? GetIndexOfAnyOptionsOrDiagnostic(IMethodSymbol methodSymbol, CSharpSyntaxNode syntaxNode)
     {
         foreach (AttributeData attribute in methodSymbol.GetAttributes())
         {
@@ -77,13 +77,13 @@ public partial class IndexOfAnyGenerator
                 {
                     if (attribute.NamedArguments.Length == 0)
                     {
-                        return Tuple.Create(setChars, false);
+                        return new IndexOfAnyOptions(setChars, false);
                     }
 
                     if (attribute.NamedArguments[0].Key == "FindAnyExcept")
                     {
                         bool findAnyExcept = (bool)(attribute.NamedArguments[0].Value.Value ?? false);
-                        return Tuple.Create(setChars, findAnyExcept);
+                        return new IndexOfAnyOptions(setChars, findAnyExcept);
                     }
                 }
             }

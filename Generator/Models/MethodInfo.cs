@@ -5,15 +5,14 @@ using Microsoft.CodeAnalysis;
 
 namespace Generator.Models;
 
-internal record struct MethodInfo(
-    string                        Name,
-    Accessibility                 Accessibility,
-    bool                          IsStatic,
-    string                        SetChars,
-    bool                          FindAnyExcept,
+internal record MethodInfo(
+    string            Name,
+    Accessibility     Accessibility,
+    bool              IsStatic,
+    IndexOfAnyOptions IndexOfAnyOptions,
     ImmutableArray<ParameterInfo> Parameters)
 {
-    public static MethodInfo Create(IMethodSymbol methodSymbol, string setChars, bool findAnyExcept)
+    public static MethodInfo Create(IMethodSymbol methodSymbol, IndexOfAnyOptions indexOfAnyOptions)
     {
         ImmutableArray<ParameterInfo>.Builder builder = ImmutableArray.CreateBuilder<ParameterInfo>(methodSymbol.Parameters.Length);
 
@@ -25,6 +24,6 @@ internal record struct MethodInfo(
             builder.Add(new ParameterInfo(parameterName, typeSymbol));
         }
 
-        return new MethodInfo(methodSymbol.Name, methodSymbol.DeclaredAccessibility, methodSymbol.IsStatic, setChars, findAnyExcept, builder.ToImmutableArray());
+        return new MethodInfo(methodSymbol.Name, methodSymbol.DeclaredAccessibility, methodSymbol.IsStatic, indexOfAnyOptions, builder.ToImmutableArray());
     }
 }

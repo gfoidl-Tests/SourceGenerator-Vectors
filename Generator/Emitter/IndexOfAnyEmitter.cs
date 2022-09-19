@@ -16,13 +16,17 @@ internal class IndexOfAnyEmitter
         "System.CodeDom.Compiler",
         "System.ComponentModel",
         "System.Diagnostics",
-        "System.Runtime.CompilerServices"
+        "System.Runtime.CompilerServices",
+        "System.Runtime.Intrinsics",
+        "System.Runtime.Intrinsics.X86"
     };
 
     private static readonly string[] s_warningPragmas =
     {
         "CS0219  // The variable '...' is assigned but its value is never used"
     };
+    //-------------------------------------------------------------------------
+    private bool _needToEmitVectorHelpers = false;
     //-------------------------------------------------------------------------
     public void Emit(SourceProductionContext context, ImmutableArray<IndexOfAnyMethod> methods)
     {
@@ -38,7 +42,12 @@ internal class IndexOfAnyEmitter
         foreach (IGrouping<ContainingTypeInfo, MethodInfo> methodGroup in methodGroups)
         {
             ContainingTypeInfo containingType = methodGroup.Key;
-            GenerateCode(containingType, methodGroup.ToArray(), writer);
+            this.EmitType(containingType, methodGroup.ToArray(), writer);
+        }
+
+        if (_needToEmitVectorHelpers)
+        {
+            HelpersEmitter.EmitVectorHelpers(writer);
         }
 
         EmitWarningPragmas(writer, disable: false);
@@ -56,42 +65,6 @@ internal class IndexOfAnyEmitter
 
         EmitWarningPragmas(writer, disable: true);
         EmitNamespaces(writer);
-    }
-    //-------------------------------------------------------------------------
-    private static void GenerateCode(ContainingTypeInfo typeInfo, MethodInfo[] methods, IndentedTextWriter writer)
-    {
-        writer.WriteLine();
-
-        if (typeInfo.Namespace is not null)
-        {
-            writer.WriteLine($"namespace {typeInfo.Namespace}");
-            writer.WriteLine("{");
-            writer.Indent++;
-        }
-
-        writer.Write($"partial {typeInfo.TypeKind} ");
-        writer.WriteLine($"{typeInfo.Name}");
-        writer.WriteLine("{");
-        writer.Indent++;
-
-        for (int i = 0; i < methods.Length; ++i)
-        {
-            EmitMethod(writer, methods[i]);
-
-            if (i < methods.Length - 1)
-            {
-                writer.WriteLine("//-------------------------------------------------------------------------");
-            }
-        }
-
-        writer.Indent--;
-        writer.WriteLine("}");
-
-        if (typeInfo.Namespace is not null)
-        {
-            writer.Indent--;
-            writer.WriteLine("}");
-        }
     }
     //-------------------------------------------------------------------------
     private static void EmitWarningPragmas(IndentedTextWriter writer, bool disable)
@@ -118,7 +91,38 @@ internal class IndexOfAnyEmitter
         }
     }
     //-------------------------------------------------------------------------
-    private static void EmitMethod(IndentedTextWriter writer, MethodInfo methodInfo)
+    private void EmitType(ContainingTypeInfo typeInfo, MethodInfo[] methods, IndentedTextWriter writer)
+    {
+        writer.WriteLine();
+
+        if (typeInfo.Namespace is not null)
+        {
+            writer.WriteLine($"namespace {typeInfo.Namespace}");
+            writer.WriteLine("{");
+            writer.Indent++;
+        }
+
+        writer.Write($"partial {typeInfo.TypeKind} ");
+        writer.WriteLine($"{typeInfo.Name}");
+        writer.WriteLine("{");
+        writer.Indent++;
+
+        for (int i = 0; i < methods.Length; ++i)
+        {
+            this.EmitMethod(writer, methods[i]);
+        }
+
+        writer.Indent--;
+        writer.WriteLine("}");
+
+        if (typeInfo.Namespace is not null)
+        {
+            writer.Indent--;
+            writer.WriteLine("}");
+        }
+    }
+    //-------------------------------------------------------------------------
+    private void EmitMethod(IndentedTextWriter writer, MethodInfo methodInfo)
     {
         writer.WriteLine($"[{Globals.GeneratedCodeAttribute}]");
         writer.WriteLine("[EditorBrowsable(EditorBrowsableState.Never)]");
@@ -135,7 +139,7 @@ internal class IndexOfAnyEmitter
         writer.WriteLine("{");
         writer.Indent++;
         {
-            EmitMethodBody(writer, methodInfo);
+            this.EmitMethodBody(writer, methodInfo);
         }
         writer.Indent--;
         writer.WriteLine("}");
@@ -156,9 +160,10 @@ internal class IndexOfAnyEmitter
         }
     }
     //-------------------------------------------------------------------------
-    private static void EmitMethodBody(IndentedTextWriter writer, MethodInfo methodInfo)
+    private void EmitMethodBody(IndentedTextWriter writer, MethodInfo methodInfo)
     {
-        writer.WriteLine($"""return value.IndexOfAny("{methodInfo.SetChars}");""");
+        MethodBodyEmitter bodyEmitter = MethodBodyEmitter.Create(methodInfo);
+        _needToEmitVectorHelpers |= bodyEmitter.Emit(writer);
     }
     //-------------------------------------------------------------------------
     private static string AccessibilityText(Accessibility accessibility) => accessibility switch
