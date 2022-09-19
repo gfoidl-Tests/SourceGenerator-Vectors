@@ -18,8 +18,8 @@ internal static class HelpersEmitter
 
         // TODO: should be 'file class' but somehow this results in
         // "CS0116: A namespace cannot directly contain members such as fields, methods or statements"
-        //writer.WriteLine("file class VectorHelper");
-        writer.WriteLine("/* file */ internal class Core");
+        //writer.WriteLine("file static class Core");
+        writer.WriteLine("/* file */ internal static class Core");
         writer.WriteLine("{");
         writer.Indent++;
         {
