@@ -2,6 +2,7 @@
 
 using BenchmarkDotNet.Attributes;
 using StrippedCoreLib;
+using MyMemoryExtension = StrippedCoreLib.MemoryExtensions;
 
 Bench bench = new();
 Console.WriteLine(bench.Authority);
@@ -18,7 +19,7 @@ public partial class Bench
     private const string AuthoritySpecific   = ":.-[]@";
     private const string ValidAuthorityChars = AlphaNumeric + AuthoritySpecific;
 
-    private static readonly MemoryExtensions1.IndexOfAnyInitData s_authorityInitData = MemoryExtensions1.IndexOfAnyInitialize(ValidAuthorityChars);
+    private static readonly MyMemoryExtension.IndexOfAnyInitData s_authorityInitData = MyMemoryExtension.IndexOfAnyInitialize(ValidAuthorityChars);
 
     [Params("hostname:8080", "www.thelongestdomainnameintheworldandthensomeandthensomemoreandmore.com")]
     public string Authority { get; set; } = "hostname:8080";

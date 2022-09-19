@@ -8,7 +8,7 @@ using System.Runtime.Intrinsics.X86;
 
 namespace StrippedCoreLib;
 
-public static class MemoryExtensions1
+public static class MemoryExtensions
 {
     public readonly struct IndexOfAnyInitData
     {
