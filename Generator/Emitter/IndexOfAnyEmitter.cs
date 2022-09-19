@@ -17,6 +17,7 @@ internal class IndexOfAnyEmitter
         "System.ComponentModel",
         "System.Diagnostics",
         "System.Runtime.CompilerServices",
+        "System.Runtime.InteropServices",
         "System.Runtime.Intrinsics",
         "System.Runtime.Intrinsics.X86"
     };
@@ -36,7 +37,7 @@ internal class IndexOfAnyEmitter
         using StringWriter sw           = new(buffer);
         using IndentedTextWriter writer = new(sw);
 
-        EmitPrologue(writer);
+        EmitBoilerplate(writer);
 
         IEnumerable<IGrouping<ContainingTypeInfo, MethodInfo>> methodGroups = methods.GroupBy(m => m.Type, m => m.Method);
         foreach (IGrouping<ContainingTypeInfo, MethodInfo> methodGroup in methodGroups)
@@ -47,7 +48,7 @@ internal class IndexOfAnyEmitter
 
         if (_needToEmitVectorHelpers)
         {
-            HelpersEmitter.EmitVectorHelpers(writer);
+            HelpersEmitter.EmitHelpers(writer);
         }
 
         EmitWarningPragmas(writer, disable: false);
@@ -56,7 +57,7 @@ internal class IndexOfAnyEmitter
         context.AddSource($"{IndexOfAnyGenerator.GeneratedIndexOfAnyAttributeName.Replace("Attribute", "Methods")}.g.cs", code);
     }
     //-------------------------------------------------------------------------
-    private static void EmitPrologue(IndentedTextWriter writer)
+    private static void EmitBoilerplate(IndentedTextWriter writer)
     {
         foreach (string header in Globals.Headers)
         {
