@@ -13,10 +13,10 @@ public static class MemoryExtensions1
     public readonly struct IndexOfAnyInitData
     {
         public bool IsAllAscii       { get; }
-        public bool[]? Lookup        { get; }
+        public UInt128 Lookup        { get; }
         public Vector128<sbyte> Mask { get; }
 
-        public IndexOfAnyInitData(bool isAllAscii, bool[]? lookup, Vector128<sbyte> mask)
+        public IndexOfAnyInitData(bool isAllAscii, UInt128 lookup, Vector128<sbyte> mask)
         {
             this.IsAllAscii = isAllAscii;
             this.Lookup     = lookup;
@@ -28,33 +28,33 @@ public static class MemoryExtensions1
     {
         if (values.Length <= 5)
         {
-            return new IndexOfAnyInitData(false, null, default);
+            return default;
         }
 
         foreach (char c in values)
         {
             if (!char.IsAscii(c))
             {
-                return new IndexOfAnyInitData(false, null, default);
+                return default;
             }
         }
 
-        const int TableSize = 128;
-        bool[] lookup = new bool[TableSize];
-        sbyte[] mask  = new sbyte[TableSize / 8];
+        UInt128 lookup = 0;
+        sbyte[] mask   = new sbyte[128 / 8];
 
         foreach (char c in values)
         {
-            lookup[c] = true;
-            SetBitInMask(mask, c);
+            SetBitInMask(ref lookup, mask, c);
         }
 
         Vector128<sbyte> vecMask = Vector128.LoadUnsafe(ref MemoryMarshal.GetArrayDataReference(mask));
         return new IndexOfAnyInitData(true, lookup, vecMask);
 
-        static void SetBitInMask(sbyte[] mask, int c)
+        static void SetBitInMask(ref UInt128 lookup, sbyte[] mask, int c)
         {
             Debug.Assert(c < 128);
+
+            lookup |= (1UL << c);
 
             int highNibble = c >> 4;
             int lowNibble  = c & 0xF;
@@ -88,13 +88,14 @@ public static class MemoryExtensions1
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOfMatchScalar<TNegator>(ReadOnlySpan<char> value, ReadOnlySpan<bool> lookup)
+    private static int IndexOfMatchScalar<TNegator>(ReadOnlySpan<char> value, UInt128 lookup)
         where TNegator : struct, INegator
     {
         for (int i = 0; i < value.Length; ++i)
         {
             char c     = value[i];
-            bool match = TNegator.NegateIfNeeded(lookup[c]);
+            bool match = ((1UL << c) & lookup) != 0;
+            match      = TNegator.NegateIfNeeded(match);
 
             if (match)
             {
