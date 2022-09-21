@@ -28,5 +28,5 @@ public partial class Bench
     public bool IsValidByIndexOfAnyExcept() => this.Authority.AsSpan().IndexOfAnyExcept(ValidAuthorityChars) < 0;
 
     [Benchmark]
-    public bool IsValidByGeneratedIndexOfAnyExcept() => this.Authority.AsSpan().IndexOfAnyExcept(ValidAuthorityChars, s_authorityInitData) < 0;
+    public bool IsValidByGeneratedIndexOfAnyExcept() => this.Authority.AsSpan().IndexOfAnyExcept(s_authorityInitData) < 0;
 }

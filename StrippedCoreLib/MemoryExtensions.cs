@@ -10,32 +10,21 @@ namespace StrippedCoreLib;
 
 public static class MemoryExtensions
 {
-    public readonly struct IndexOfAnyInitData
-    {
-        public bool IsAllAscii       { get; }
-        public UInt128 Lookup        { get; }
-        public Vector128<sbyte> Mask { get; }
+    public abstract class IndexOfAnyInitData { }
 
-        public IndexOfAnyInitData(bool isAllAscii, UInt128 lookup, Vector128<sbyte> mask)
-        {
-            this.IsAllAscii = isAllAscii;
-            this.Lookup     = lookup;
-            this.Mask       = mask;
-        }
+    private sealed class BitMaskIndexOfAnyInitData : IndexOfAnyInitData
+    {
+        public UInt128 Lookup        { get; init; }
+        public Vector128<sbyte> Mask { get; init; }
     }
 
     public static IndexOfAnyInitData IndexOfAnyInitialize(ReadOnlySpan<char> values)
     {
-        if (values.Length <= 5)
-        {
-            return default;
-        }
-
         foreach (char c in values)
         {
             if (!char.IsAscii(c))
             {
-                return default;
+                throw new InvalidOperationException("Non ASCII here");
             }
         }
 
@@ -48,13 +37,13 @@ public static class MemoryExtensions
         }
 
         Vector128<sbyte> vecMask = Vector128.LoadUnsafe(ref MemoryMarshal.GetArrayDataReference(mask));
-        return new IndexOfAnyInitData(true, lookup, vecMask);
+        return new BitMaskIndexOfAnyInitData { Lookup = lookup, Mask = vecMask };
 
         static void SetBitInMask(ref UInt128 lookup, sbyte[] mask, int c)
         {
             Debug.Assert(c < 128);
 
-            lookup |= (1UL << c);
+            lookup |= (UInt128.One << c);
 
             int highNibble = c >> 4;
             int lowNibble  = c & 0xF;
@@ -63,38 +52,38 @@ public static class MemoryExtensions
         }
     }
 
-    public static int IndexOfAny(this ReadOnlySpan<char> span, ReadOnlySpan<char> values, IndexOfAnyInitData initData)
+    public static int IndexOfAny(this ReadOnlySpan<char> span, IndexOfAnyInitData initData)
     {
-        if (values.Length <= 5 || !initData.IsAllAscii)
+        if (initData is BitMaskIndexOfAnyInitData bitMaskIndexOfAnyInitData)
         {
-            return span.IndexOfAny(values);
+            return Vector128.IsHardwareAccelerated && span.Length >= Vector128<sbyte>.Count
+                ? BitMaskIndexOfMatchVectorized<Negate>(span, bitMaskIndexOfAnyInitData.Mask)
+                : BitMaskIndexOfMatchScalar<DontNegate>(span, bitMaskIndexOfAnyInitData.Lookup);
         }
 
-        return Vector128.IsHardwareAccelerated && span.Length >= Vector128<sbyte>.Count
-            ? IndexOfMatchVectorized<Negate>(span, initData.Mask)
-            : IndexOfMatchScalar<DontNegate>(span, initData.Lookup);
+        throw new NotSupportedException("At the moment only the bitmask-appraoch is supported");
     }
 
-    public static int IndexOfAnyExcept(this ReadOnlySpan<char> span, ReadOnlySpan<char> values, IndexOfAnyInitData initData)
+    public static int IndexOfAnyExcept(this ReadOnlySpan<char> span, IndexOfAnyInitData initData)
     {
-        if (values.Length <= 5 || !initData.IsAllAscii)
+        if (initData is BitMaskIndexOfAnyInitData bitMaskIndexOfAnyInitData)
         {
-            return span.IndexOfAnyExcept(values);
+            return Vector128.IsHardwareAccelerated && span.Length >= Vector128<sbyte>.Count
+                ? BitMaskIndexOfMatchVectorized<DontNegate>(span, bitMaskIndexOfAnyInitData.Mask)
+                : BitMaskIndexOfMatchScalar<Negate>(span, bitMaskIndexOfAnyInitData.Lookup);
         }
 
-        return Vector128.IsHardwareAccelerated && span.Length >= Vector128<sbyte>.Count
-            ? IndexOfMatchVectorized<DontNegate>(span, initData.Mask)
-            : IndexOfMatchScalar<Negate>(span, initData.Lookup);
+        throw new NotSupportedException("At the moment only the bitmask-appraoch is supported");
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int IndexOfMatchScalar<TNegator>(ReadOnlySpan<char> value, UInt128 lookup)
+    private static int BitMaskIndexOfMatchScalar<TNegator>(ReadOnlySpan<char> value, UInt128 lookup)
         where TNegator : struct, INegator
     {
         for (int i = 0; i < value.Length; ++i)
         {
             char c     = value[i];
-            bool match = ((1UL << c) & lookup) != 0;
+            bool match = ((UInt128.One << c) & lookup) != 0;
             match      = TNegator.NegateIfNeeded(match);
 
             if (match)
@@ -106,7 +95,7 @@ public static class MemoryExtensions
         return -1;
     }
 
-    private static int IndexOfMatchVectorized<TNegator>(ReadOnlySpan<char> value, Vector128<sbyte> bitMaskLookup)
+    private static int BitMaskIndexOfMatchVectorized<TNegator>(ReadOnlySpan<char> value, Vector128<sbyte> bitMaskLookup)
         where TNegator : struct, INegator
     {
         Debug.Assert(Vector128.IsHardwareAccelerated);
