@@ -8,42 +8,28 @@ using System.Runtime.Intrinsics.X86;
 
 namespace StrippedCoreLib;
 
-public static class MemoryExtensions
+public static class MemoryExtensionsWithVector
 {
-    public abstract class IndexOfAnyInitData { }
-
-    private sealed class BitMaskIndexOfAnyInitData : IndexOfAnyInitData
+    public static unsafe Vector128<byte> IndexOfAnyInitialize(ReadOnlySpan<char> values)
     {
-        public UInt128 Lookup        { get; init; }
-        public Vector128<sbyte> Mask { get; init; }
-    }
+        Vector128<byte> maskVec = Vector128<byte>.Zero;
+        sbyte* mask             = (sbyte*)&maskVec;
 
-    public static IndexOfAnyInitData IndexOfAnyInitialize(ReadOnlySpan<char> values)
-    {
         foreach (char c in values)
         {
             if (!char.IsAscii(c))
             {
                 throw new InvalidOperationException("Non ASCII here");
             }
+
+            SetBitInMask(mask, c);
         }
 
-        UInt128 lookup = 0;
-        sbyte[] mask   = new sbyte[128 / 8];
+        return maskVec;
 
-        foreach (char c in values)
-        {
-            SetBitInMask(ref lookup, mask, c);
-        }
-
-        Vector128<sbyte> vecMask = Vector128.LoadUnsafe(ref MemoryMarshal.GetArrayDataReference(mask));
-        return new BitMaskIndexOfAnyInitData { Lookup = lookup, Mask = vecMask };
-
-        static void SetBitInMask(ref UInt128 lookup, sbyte[] mask, int c)
+        static void SetBitInMask(sbyte* mask, int c)
         {
             Debug.Assert(c < 128);
-
-            lookup |= (UInt128.One << c);
 
             int highNibble = c >> 4;
             int lowNibble  = c & 0xF;
@@ -52,38 +38,33 @@ public static class MemoryExtensions
         }
     }
 
-    public static int IndexOfAny(this ReadOnlySpan<char> span, IndexOfAnyInitData initData)
+    public static int IndexOfAny(this ReadOnlySpan<char> span, Vector128<byte> initData)
     {
-        if (initData is BitMaskIndexOfAnyInitData bitMaskIndexOfAnyInitData)
-        {
-            return Vector128.IsHardwareAccelerated && span.Length >= Vector128<sbyte>.Count
-                ? BitMaskIndexOfMatchVectorized<Negate>(span, bitMaskIndexOfAnyInitData.Mask)
-                : BitMaskIndexOfMatchScalar<DontNegate>(span, bitMaskIndexOfAnyInitData.Lookup);
-        }
-
-        throw new NotSupportedException("At the moment only the bitmask-appraoch is supported");
+        return Vector128.IsHardwareAccelerated && span.Length >= Vector128<short>.Count
+            ? BitMaskIndexOfMatchVectorized<Negate>(span, initData.AsSByte())
+            : BitMaskIndexOfMatchScalar<DontNegate>(span, Unsafe.As<Vector128<byte>, UInt128>(ref initData));
     }
 
-    public static int IndexOfAnyExcept(this ReadOnlySpan<char> span, IndexOfAnyInitData initData)
+    public static int IndexOfAnyExcept(this ReadOnlySpan<char> span, Vector128<byte> initData)
     {
-        if (initData is BitMaskIndexOfAnyInitData bitMaskIndexOfAnyInitData)
-        {
-            return Vector128.IsHardwareAccelerated && span.Length >= Vector128<sbyte>.Count
-                ? BitMaskIndexOfMatchVectorized<DontNegate>(span, bitMaskIndexOfAnyInitData.Mask)
-                : BitMaskIndexOfMatchScalar<Negate>(span, bitMaskIndexOfAnyInitData.Lookup);
-        }
-
-        throw new NotSupportedException("At the moment only the bitmask-appraoch is supported");
+        return Vector128.IsHardwareAccelerated && span.Length >= Vector128<short>.Count
+            ? BitMaskIndexOfMatchVectorized<DontNegate>(span, initData.AsSByte())
+            : BitMaskIndexOfMatchScalar<Negate>(span, Unsafe.As<Vector128<byte>, UInt128>(ref initData));
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int BitMaskIndexOfMatchScalar<TNegator>(ReadOnlySpan<char> value, UInt128 lookup)
+    private static unsafe int BitMaskIndexOfMatchScalar<TNegator>(ReadOnlySpan<char> value, UInt128 lookup)
         where TNegator : struct, INegator
     {
+        sbyte* mask = (sbyte*)&lookup;
+
         for (int i = 0; i < value.Length; ++i)
         {
-            char c     = value[i];
-            bool match = ((UInt128.One << c) & lookup) != 0;
+            char c         = value[i];
+            int highNibble = c >> 4 & 0xF;
+            int lowNibble  = c & 0xF;
+
+            bool match = (mask[lowNibble] & (1 << highNibble)) != 0;
             match      = TNegator.NegateIfNeeded(match);
 
             if (match)

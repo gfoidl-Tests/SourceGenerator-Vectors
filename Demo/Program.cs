@@ -1,7 +1,7 @@
 // (c) gfoidl, all rights reserved
 
 using StrippedCoreLib;
-using MyMemoryExtension = StrippedCoreLib.MemoryExtensions;
+using MyMemoryExtension = StrippedCoreLib.MemoryExtensionsWithInitData;
 
 ReadOnlySpan<char> span = "abcdefgh8ijklmnopqrstuv3wxyz";
 
